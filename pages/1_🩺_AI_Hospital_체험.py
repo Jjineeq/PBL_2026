@@ -49,6 +49,10 @@ tab1, tab2 = st.tabs(["🩺 AI 건강검진 · 사고 전", "🔍 원인 진단 
 
 with tab1:
     st.markdown('<div class="demo-shell">', unsafe_allow_html=True)
+    st.page_link(
+        "pages/2_🚗_Health_Score_모니터링.py",
+        label="🚗 자동차 다이어그램으로 자세히 보기 (실제 계산 엔진) →",
+    )
     scenario_key = st.radio(
         "상황 선택",
         options=list(HEALTH_SCENARIOS.keys()),

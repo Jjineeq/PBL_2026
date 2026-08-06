@@ -19,7 +19,7 @@ import streamlit as st
 from components.icons import icon
 from components.mdutil import md as _md
 
-DEMO_PAGE = "pages/1_🩺_AI_Hospital_체험.py"
+DEMO_PAGE = "pages/1_🚦_관제_센터.py"
 
 
 def _card(ic: str, title: str, desc: str, delay: int) -> str:
@@ -100,7 +100,7 @@ def _hero():
 def _hero_cta():
     _, mid, _ = st.columns([1, 1, 1])
     with mid:
-        st.page_link(DEMO_PAGE, label="PoC 체험해보기 →", use_container_width=True)
+        st.page_link(DEMO_PAGE, label="관제 센터 체험해보기 →", use_container_width=True)
         _md(
             '<div class="scroll-cue" style="position:static;margin:34px auto 0 auto;">'
             '<span>Scroll</span><span class="chevron"></span></div>'
@@ -272,16 +272,16 @@ def _impact_cta():
         <div class="section section-tight" style="padding-bottom:0;">
             <div class="cta-panel reveal">
                 <span class="mock-badge">PoC · Proof of Concept</span>
-                <h2>지금 바로 AI Hospital을 체험해보세요</h2>
-                <p>상황을 선택하면 AI 건강검진과 다중 AI 토론 기반 원인 진단을
-                   미리 만든 시나리오로 보여드립니다.</p>
+                <h2>지금 바로 AI Hospital 관제 센터를 체험해보세요</h2>
+                <p>운행 중인 차량 중 위험 차량을 AI가 먼저 선별하고, 경로별 위험을 예측해
+                   관제사가 최적의 예방 조치를 선택하는 흐름을 직접 확인할 수 있습니다.</p>
             </div>
         </div>
         """
     )
     _, mid, _ = st.columns([1, 1, 1])
     with mid:
-        st.page_link(DEMO_PAGE, label="PoC 체험해보기 →", use_container_width=True)
+        st.page_link(DEMO_PAGE, label="관제 센터 체험해보기 →", use_container_width=True)
     _md('<div class="section section-tight" style="padding-top:0;"></div>')
 
 

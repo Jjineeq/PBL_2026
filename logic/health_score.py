@@ -1,15 +1,14 @@
 """
 Health Score calculation engine.
 
-Unlike logic/diagnosis.py (which still returns canned answers for the
-multi-agent debate feature), everything in this file is a REAL
-implementation of the formulas from "자율주행 Health Score 점수체계"
-(2026) — weights, thresholds and the Savg -> worst-module -> context
-penalty pipeline are transcribed directly from the spec. The only thing
-that is still a stand-in is the *input*: component health values (0-1)
-come from a hand-picked scenario preset (logic/scenarios.py) instead of
-live sensor telemetry. Swapping in real telemetry later doesn't touch
-this file at all — only where the `components` dict comes from.
+Everything in this file is a REAL implementation of the formulas from
+"자율주행 Health Score 점수체계" (2026) — weights, thresholds and the
+Savg -> worst-module -> context penalty pipeline are transcribed directly
+from the spec. The only thing that is still a stand-in is the *input*:
+component health values (0-1) come from hand-picked (logic/scenarios.py)
+or procedurally generated (logic/fleet.py) presets instead of live sensor
+telemetry. Swapping in real telemetry later doesn't touch this file at
+all — only where the `components` dict comes from.
 """
 
 MODULE_LABELS = {

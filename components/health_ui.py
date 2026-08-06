@@ -1,7 +1,7 @@
-"""Render helpers for the Health Score monitoring page.
+"""Render helpers for Health Score display (used by the Control Room page).
 
-Same rule as components/diagnosis_ui.py: each function returns a single
-HTML string meant for exactly one mdutil.md() call — see
+Same rule as the other components/*_ui.py modules: each function returns a
+single HTML string meant for exactly one mdutil.md() call — see
 components/landing.py's module docstring for why partial/split calls
 break CSS grid & table layouts under Streamlit.
 """

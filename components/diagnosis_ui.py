@@ -42,7 +42,8 @@ def render_health_result(result: dict, scenario_label: str) -> str:
     return f"""
     <div class="glass-card reveal" style="padding:34px;">
         <div class="gauge-status {status}">{scenario_label} · {_STATUS_LABEL[status]}</div>
-        <div class="gauge-wrap">
+        <p style="color:var(--text-mid);font-size:1rem;line-height:1.7;margin:2px 0 0 0;">{result['situation']}</p>
+        <div class="gauge-wrap" style="margin-top:22px;">
             <div class="gauge" style="--pct:{result['overall']};--gauge-color:{color};">
                 <div class="gauge-inner">
                     <div class="score">{result['overall']}</div>
@@ -62,11 +63,23 @@ def render_health_result(result: dict, scenario_label: str) -> str:
     """
 
 
+def render_module_note(module_name: str, note: str) -> str:
+    return f"""
+    <div class="verdict-panel reveal" style="margin-top:16px;">
+        <div class="vlabel">{module_name} 모듈 상세</div>
+        <p>{note}</p>
+    </div>
+    """
+
+
 def render_root_cause_result(result: dict, scenario_label: str) -> str:
     nodes = []
-    for i, (stage, state) in enumerate(result["timeline"]):
+    for i, (stage, state, time_label) in enumerate(result["timeline"]):
         cls = "active" if state == "issue" else ""
-        nodes.append(f'<div class="timeline-node {cls}"><div class="dot"></div><div class="t-label">{stage}</div></div>')
+        nodes.append(
+            f'<div class="timeline-node {cls}"><div class="dot"></div>'
+            f'<div class="t-label">{stage}</div><div class="t-time">{time_label}</div></div>'
+        )
         if i < len(result["timeline"]) - 1:
             nodes.append('<div class="timeline-line"></div>')
     timeline_html = "".join(nodes)
@@ -91,6 +104,7 @@ def render_root_cause_result(result: dict, scenario_label: str) -> str:
         <div class="ph-label" style="color:var(--accent-blue);font-size:0.78rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;">
             {scenario_label}
         </div>
+        <p style="color:var(--text-mid);font-size:1rem;line-height:1.7;margin:10px 0 0 0;">{result['situation']}</p>
         <div class="timeline-row">{timeline_html}</div>
         <div class="expert-row">{experts_html}</div>
         <div class="verdict-panel">

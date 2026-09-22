@@ -151,7 +151,7 @@ md("</div>")
 
 md(
     '<div class="footer-note">2026학년도 한국자동차연구원 퓨처모빌리티 아이디어 경진대회 · '
-    "1차 중간발표 · Health Score 산식 출처: 자율주행 Health Score 점수체계</div>"
+    "최종발표 · Health Score 산식 출처: 자율주행 Health Score 점수체계</div>"
 )
 
 load_scroll_reveal()

@@ -3,6 +3,7 @@
 Same single-call HTML-string rule as the other components/*_ui.py modules.
 """
 
+from components.icons import icon
 from logic.health_score import BAND_COLORS, BAND_EMOJI, HEALTH_BANDS, MODULE_LABELS
 
 
@@ -46,5 +47,25 @@ def render_fleet_table(fleet: list[dict], limit: int | None = 15) -> str:
             <thead><tr><th>상태</th><th>차량</th><th>운행 구간</th><th>Health Score</th><th>최저 모듈</th></tr></thead>
             <tbody>{body}</tbody>
         </table>
+    </div>
+    """
+
+
+def render_situation_panel(vehicle: dict) -> str:
+    band = vehicle["_result"]["health"]["band"]
+    items = "".join(
+        f'<li><span class="ic">{icon("radio", 15)}</span>{s}</li>' for s in vehicle["situation"]
+    )
+    penalty = vehicle["context_penalty"]
+    if penalty:
+        items += (
+            f'<li><span class="ic">{icon("alert", 15)}</span>'
+            f"상황 페널티 적용: −{penalty}점 ({vehicle['context_penalty_reason']})</li>"
+        )
+    return f"""
+    <div class="compact-panel reveal" style="margin-bottom:22px;">
+        <div class="ph-label">Situation · 현재 상황</div>
+        <h4>{vehicle['route']} 구간 운행 중 · {band[2]}</h4>
+        <ul>{items}</ul>
     </div>
     """

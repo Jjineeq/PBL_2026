@@ -1,6 +1,15 @@
 """
 Candidate detour routes for the Control Room's route-comparison step.
 
+There is only ONE Health Score system in this app: this module runs the
+exact same evaluate_scenario() engine as the Detect/Diagnose steps. What
+differs is *where* it's evaluated — Detect/Diagnose reads it at a single
+snapshot in time, while here it's re-run at each of 5 waypoints along a
+candidate route, with the vehicle's weakest module perturbed by how much
+that particular route exposes it along the way. So a route's score isn't a
+second, disconnected formula — it's the same formula, viewed across a path
+instead of frozen at one moment.
+
 Deterministic per vehicle (random.Random(f"route-{vehicle_id}") — string
 seeds use a hash-independent algorithm, so this is stable across restarts)
 so the same vehicle always gets the same 3 candidates across Streamlit
@@ -11,9 +20,12 @@ tends to stay stable/recover. Whichever ends up with the highest worst-point
 score is surfaced as the recommended route — it isn't hardcoded to C.
 """
 
+import copy
+import math
 import random
 
-from logic.health_score import HEALTH_BANDS, band_for
+from logic.fleet import PLACE_COORDS
+from logic.health_score import HEALTH_BANDS, band_for, evaluate_scenario
 
 _RISK_TAGS = {
     "perception": ["보행자 밀집", "인도 인접 차선", "야간 시야 저하"],
@@ -22,11 +34,14 @@ _RISK_TAGS = {
     "control": ["급커브 구간", "좁은 차선", "노면 마찰력 저하"],
 }
 
-# key, label, distance factor, eta factor, trend
+# key, label, distance factor, eta factor, trend, perpendicular bow offset (km)
+# — the bow offset is what makes each route visibly diverge on the map: A
+# runs close to the straight line, B bows one way, C bows further the other
+# way (and is the longest, matching its larger distance factor).
 _ROUTE_DEFS = [
-    ("A", "경로 A (최단 경로)", 1.00, 1.00, "decline"),
-    ("B", "경로 B (대안 경로 1)", 1.12, 1.15, "flat"),
-    ("C", "경로 C (대안 경로 2)", 1.28, 1.35, "recover"),
+    ("A", "경로 A (최단 경로)", 1.00, 1.00, "decline", 0.3),
+    ("B", "경로 B (대안 경로 1)", 1.12, 1.15, "flat", -1.3),
+    ("C", "경로 C (대안 경로 2)", 1.28, 1.35, "recover", 2.1),
 ]
 
 _STEPS = 5
@@ -34,40 +49,102 @@ _BASE_DISTANCE_KM = 8.5
 _BASE_ETA_MIN = 14
 
 
-def _trajectory(rng: random.Random, base_score: int, trend: str) -> list[int]:
-    scores = [base_score]
-    cur = base_score
-    for i in range(_STEPS - 1):
+def _severity_trajectory(rng: random.Random, trend: str, steps: int = _STEPS) -> list[float]:
+    """0 (no added exposure) .. ~0.85 (heavy degradation) per waypoint. This
+    drives how much the weak module's components get knocked down at each
+    point — the route's score then comes from re-running the real Health
+    Score formula on that degraded state, not from randomizing a final
+    number directly."""
+    sev = [0.0]
+    cur = 0.0
+    for i in range(1, steps):
         if trend == "decline":
-            cur = max(5, cur - (rng.randint(8, 16) + i * 2))
+            cur = min(0.85, cur + rng.uniform(0.15, 0.24))
         elif trend == "flat":
-            cur = max(20, min(95, cur + rng.randint(-9, 4)))
+            cur = rng.uniform(0.22, 0.4) if i == 1 else min(0.55, max(0.12, cur + rng.uniform(-0.09, 0.09)))
         else:  # recover
-            delta = rng.randint(1, 6) if i == 0 else rng.randint(-3, 6)
-            cur = max(base_score - 8, min(95, cur + delta))
-        scores.append(cur)
-    return scores
+            cur = rng.uniform(0.32, 0.48) if i == 1 else max(0.0, cur - rng.uniform(0.09, 0.19))
+        sev.append(round(cur, 3))
+    return sev
 
 
-def generate_candidate_routes(vehicle_id: str, base_health: float, weak_module: str | None = None):
+def _perturbed_health(vehicle: dict, weak_module: str, severity: float) -> dict:
+    """Re-runs the real evaluate_scenario() pipeline on a copy of the vehicle
+    with its weakest module degraded by `severity` and a matching bump to
+    the situational context penalty — the exact same math the Detect/
+    Diagnose snapshot uses, just fed a worse (route-exposure-dependent)
+    input instead of the vehicle's current state."""
+    if severity <= 0:
+        return evaluate_scenario(vehicle)
+    sim = copy.deepcopy(vehicle)
+    for key, value in sim["components"][weak_module].items():
+        sim["components"][weak_module][key] = max(0.05, value * (1 - severity))
+    sim["context_penalty"] = vehicle["context_penalty"] + round(severity * 6)
+    return evaluate_scenario(sim)
+
+
+def _route_waypoints(origin: tuple, dest: tuple, bow_km: float, steps: int = _STEPS) -> list[tuple]:
+    """Interpolates `steps` (lat, lng) points from origin to dest, bowed
+    sideways by `bow_km` at the midpoint (a simple flat-plane approximation
+    — fine at these short, few-km-to-tens-of-km distances)."""
+    lat0, lng0 = origin
+    lat1, lng1 = dest
+    km_per_deg_lat = 111.0
+    km_per_deg_lng = 111.0 * math.cos(math.radians((lat0 + lat1) / 2))
+
+    dx = (lng1 - lng0) * km_per_deg_lng
+    dy = (lat1 - lat0) * km_per_deg_lat
+    length = math.hypot(dx, dy) or 1.0
+    perp_x, perp_y = -dy / length, dx / length
+
+    points = []
+    for i in range(steps):
+        t = i / (steps - 1)
+        base_lat = lat0 + (lat1 - lat0) * t
+        base_lng = lng0 + (lng1 - lng0) * t
+        bow = math.sin(math.pi * t) * bow_km
+        off_lat = (perp_y * bow) / km_per_deg_lat
+        off_lng = (perp_x * bow) / km_per_deg_lng
+        points.append((round(base_lat + off_lat, 5), round(base_lng + off_lng, 5)))
+    return points
+
+
+def generate_candidate_routes(
+    vehicle: dict,
+    weak_module: str,
+    origin_label: str | None = None,
+    dest_label: str | None = None,
+):
     """Returns (routes, recommended_key)."""
-    rng = random.Random(f"route-{vehicle_id}")
-    tags_pool = _RISK_TAGS.get(weak_module, []) if weak_module else []
-    base_score = round(base_health)
+    rng = random.Random(f"route-{vehicle['id']}")
+    tags_pool = _RISK_TAGS.get(weak_module, [])
+
+    origin_coords = PLACE_COORDS.get(origin_label, (37.45, 126.95)) if origin_label else (37.45, 126.95)
+    dest_coords = PLACE_COORDS.get(dest_label, (37.40, 127.05)) if dest_label else (37.40, 127.05)
 
     routes = []
-    for key, label, dist_factor, eta_factor, trend in _ROUTE_DEFS:
-        scores = _trajectory(rng, base_score, trend)
+    for key, label, dist_factor, eta_factor, trend, bow_km in _ROUTE_DEFS:
+        severities = _severity_trajectory(rng, trend)
+        scores = [round(_perturbed_health(vehicle, weak_module, sev)["health"]["health_final"]) for sev in severities]
         min_score = min(scores)
         band = band_for(min_score, HEALTH_BANDS)
         distance_km = round(_BASE_DISTANCE_KM * dist_factor + rng.uniform(-0.4, 0.4), 1)
         eta_min = round(_BASE_ETA_MIN * eta_factor + rng.uniform(-1, 1))
+        coords = _route_waypoints(origin_coords, dest_coords, bow_km * dist_factor)
 
-        risk_factors = []
-        if tags_pool and trend == "decline":
-            risk_factors = rng.sample(tags_pool, k=min(2, len(tags_pool)))
-        elif tags_pool and trend == "flat":
-            risk_factors = rng.sample(tags_pool, k=1)
+        # Tag whichever mid-route waypoints actually carry the most exposure
+        # for this route (rather than a hardcoded index), so the risk callout
+        # always lines up with where the recomputed score actually dips.
+        mid_idxs = sorted((i for i in range(1, _STEPS - 1) if severities[i] > 0.25), key=lambda i: -severities[i])
+        chosen_tags = rng.sample(tags_pool, k=min(len(mid_idxs), len(tags_pool))) if tags_pool and mid_idxs else []
+        tagged_idxs = sorted(mid_idxs[: len(chosen_tags)])
+        risk_factors = chosen_tags
+        risk_points = [{"idx": idx, "tag": tag} for idx, tag in zip(tagged_idxs, chosen_tags)]
+
+        time_labels = [
+            "출발" if i == 0 else ("도착" if i == _STEPS - 1 else f"+{round(eta_min * i / (_STEPS - 1))}분")
+            for i in range(_STEPS)
+        ]
 
         routes.append(
             {
@@ -79,6 +156,9 @@ def generate_candidate_routes(vehicle_id: str, base_health: float, weak_module: 
                 "min_score": min_score,
                 "band": band,
                 "risk_factors": risk_factors,
+                "risk_points": risk_points,
+                "coords": coords,
+                "time_labels": time_labels,
             }
         )
 

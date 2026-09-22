@@ -1,6 +1,6 @@
 import streamlit as st
 
-from components.diagnosis_ui import render_health_result, render_root_cause_result
+from components.diagnosis_ui import render_health_result, render_module_note, render_root_cause_result
 from components.mdutil import md
 from components.theme import inject_top_markers, load_css, load_scroll_reveal
 from logic.diagnosis import (
@@ -66,9 +66,24 @@ with tab1:
     if run:
         st.session_state["health_result"] = run_health_check(scenario_key)
         st.session_state["health_result_label"] = HEALTH_SCENARIOS[scenario_key]
+        st.session_state["health_module_note"] = None
 
     if "health_result" in st.session_state:
-        md(render_health_result(st.session_state["health_result"], st.session_state["health_result_label"]))
+        health_result = st.session_state["health_result"]
+        md(render_health_result(health_result, st.session_state["health_result_label"]))
+
+        md(
+            '<div class="ph-label" style="color:var(--accent-blue);font-size:0.78rem;font-weight:700;'
+            'letter-spacing:0.06em;text-transform:uppercase;margin:22px 0 10px 0;">모듈 클릭해서 상세 원인 보기</div>'
+        )
+        note_cols = st.columns(4)
+        for i, (name, score) in enumerate(health_result["modules"]):
+            with note_cols[i]:
+                if st.button(f"{name} {score}점", key=f"health_mod_{name}", use_container_width=True):
+                    st.session_state["health_module_note"] = name
+        active_note = st.session_state.get("health_module_note")
+        if active_note:
+            md(render_module_note(active_note, health_result["module_notes"][active_note]))
     else:
         st.caption("상황을 고른 뒤 '건강검진 실행'을 눌러보세요.")
     st.markdown("</div>", unsafe_allow_html=True)
@@ -95,6 +110,6 @@ with tab2:
         st.caption("사고 시나리오를 고른 뒤 '원인 진단 실행'을 눌러보세요.")
     st.markdown("</div>", unsafe_allow_html=True)
 
-md('<div class="footer-note">2026학년도 한국자동차연구원 퓨처모빌리티 아이디어 경진대회 · 1차 중간발표</div>')
+md('<div class="footer-note">2026학년도 한국자동차연구원 퓨처모빌리티 아이디어 경진대회 · 최종발표</div>')
 
 load_scroll_reveal()

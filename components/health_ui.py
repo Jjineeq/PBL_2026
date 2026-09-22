@@ -106,6 +106,134 @@ def render_health_breakdown(scenario: dict, result: dict) -> str:
     """
 
 
+def _preview_bar_row(label: str, before: int, after: int, color: str) -> str:
+    delta = after - before
+    tone = "var(--accent-teal)" if delta > 0 else ("var(--text-lo)" if delta == 0 else "var(--accent-red-2)")
+    sign = "+" if delta > 0 else ""
+    return f"""
+    <div class="preview-bar-row">
+        <div class="p-label">{label}</div>
+        <div class="preview-bar-track">
+            <div class="preview-bar-after" style="width:{after}%;background:{color};"></div>
+            <div class="preview-bar-marker" style="left:{before}%;"></div>
+        </div>
+        <div class="p-val">{before}<span class="arrow">→</span><b style="color:{color};">{after}</b>
+            <span style="color:{tone};">({sign}{delta})</span>
+        </div>
+    </div>
+    """
+
+
+def render_prevention_preview(
+    cur_final: int,
+    sim_final: int,
+    weak_modules: list[str],
+    before_modules: dict[str, int],
+    after_modules: dict[str, int],
+) -> str:
+    """Bar-chart before/after preview for the Guide step's prevention-action
+    picker — re-rendered on every rerun so picking a different action moves
+    the bars immediately."""
+    diff = sim_final - cur_final
+    tone = "var(--accent-teal)" if diff > 0 else ("var(--text-lo)" if diff == 0 else "var(--accent-red-2)")
+    after_color = BAND_COLORS.get(band_for(sim_final, HEALTH_BANDS)[2], "#8892a8")
+
+    overall_row = _preview_bar_row("Health Score", cur_final, sim_final, after_color)
+    module_rows = "".join(
+        _preview_bar_row(
+            MODULE_LABELS[m],
+            before_modules[m],
+            after_modules[m],
+            BAND_COLORS.get(band_for(after_modules[m], MODULE_BANDS[m])[2], "#8892a8"),
+        )
+        for m in weak_modules
+    )
+
+    return f"""
+    <div class="verdict-panel reveal" style="margin-top:22px;">
+        <div class="vlabel">Live Preview · 조치 적용 시뮬레이션</div>
+        <p>선택한 예방 조치를 적용하면 Health Score가
+            <b>{cur_final}점 → {sim_final}점</b>
+            (<span style="color:{tone};font-weight:700;">{'+' if diff > 0 else ''}{diff}점</span>)
+            으로 개선될 것으로 예상됩니다. 조치를 바꾸면 아래 막대가 즉시 갱신됩니다.
+            <span style="color:var(--text-lo);">(참고용 추정치이며 확정된 산식은 아닙니다)</span>
+        </p>
+        <div class="preview-bars">{overall_row}{module_rows}</div>
+    </div>
+    """
+
+
+def render_human_impact_panel(
+    baseline_route: dict,
+    chosen_route: dict,
+    cur_final: int,
+    sim_final: int,
+    num_actions: int,
+) -> str:
+    """Counterfactual panel for the Apply step: what the AI would have done
+    completely on its own (default shortest route, no prevention actions)
+    versus what actually happens because the controller stepped in. Reuses
+    numbers already computed for the route-comparison and Live Preview steps
+    — no new simulation, just a different framing of the same data.
+
+    Health Score is the headline number in each box (it's the app's one
+    universal metric), with the route's own 최저 예측 점수 as a supporting
+    line — a route-band label alone can look unchanged even when the
+    underlying score moves a lot (e.g. 5 -> 24 is still "심각"), so leading
+    with the Health Score band avoids that false-no-change read."""
+    cur_band = band_for(cur_final, HEALTH_BANDS)
+    sim_band = band_for(sim_final, HEALTH_BANDS)
+    bad_color = BAND_COLORS.get(cur_band[2], "#8892a8")
+    good_color = BAND_COLORS.get(sim_band[2], "#8892a8")
+    health_delta = sim_final - cur_final
+    route_delta = chosen_route["min_score"] - baseline_route["min_score"]
+    same_route = chosen_route["key"] == baseline_route["key"]
+    delta_tone = "var(--accent-teal)" if health_delta > 0 else ("var(--text-lo)" if health_delta == 0 else "var(--accent-red-2)")
+
+    route_line = (
+        "AI가 원래 가려던 최단 경로를 그대로 선택했습니다"
+        if same_route
+        else f"{chosen_route['label']} 적용 · 최단 경로 대비 위험 구간 회피"
+    )
+    action_line = f"예방 조치 {num_actions}건 적용" if num_actions else "예방 조치 없음 (정상 구간)"
+
+    summary = (
+        f"관제사가 개입하지 않았다면 Health Score는 <b style=\"color:{bad_color};\">{cur_final}점 ({cur_band[2]})</b>"
+        f" 그대로였을 것입니다. 관제사의 경로·조치 선택으로 실제로는"
+        f" <b style=\"color:{good_color};\">{sim_final}점 ({sim_band[2]})</b>"
+        f" — <b style=\"color:{delta_tone};\">{'+' if health_delta > 0 else ''}{health_delta}점</b> 개선된 결과를 얻습니다."
+        f" 경로의 최저 예측 점수도 {baseline_route['min_score']}점 → {chosen_route['min_score']}점"
+        f" ({'+' if route_delta > 0 else ''}{route_delta}점)으로 함께 달라집니다."
+    )
+
+    return f"""
+    <div class="verdict-panel reveal" style="border-left:3px solid var(--accent-red-2);">
+        <div class="vlabel">Counterfactual · 사람이 개입하지 않았다면</div>
+        <div class="cf-compare">
+            <div class="cf-box bad">
+                <div class="cf-label">AI 단독 운행 · 개입 없음</div>
+                <div class="cf-metric-label">Health Score</div>
+                <div class="cf-score">{cur_final}<span class="cf-band">({cur_band[2]})</span></div>
+                <div class="cf-submetric">최저 예측 점수 {baseline_route['min_score']}점 ({baseline_route['band'][2]})</div>
+                <div class="cf-desc">{baseline_route['label']} 그대로 진행 · 예방 조치 없음</div>
+            </div>
+            <div class="cf-arrow">
+                <span>→</span>
+                <div class="cf-delta-badge" style="color:{delta_tone};border-color:{delta_tone};">{'+' if health_delta > 0 else ''}{health_delta}점</div>
+            </div>
+            <div class="cf-box good">
+                <div class="cf-label">관제사 개입 후</div>
+                <div class="cf-metric-label">Health Score</div>
+                <div class="cf-score">{sim_final}<span class="cf-band">({sim_band[2]})</span></div>
+                <div class="cf-submetric">최저 예측 점수 {chosen_route['min_score']}점 ({chosen_route['band'][2]})</div>
+                <div class="cf-desc">{route_line} · {action_line}</div>
+            </div>
+        </div>
+        <div class="cf-summary">{summary}</div>
+    </div>
+    """
+
+
 def render_comparison(scenario_a: dict, scenario_b: dict, result_a: dict, result_b: dict) -> str:
     ha, hb = result_a["health"], result_b["health"]
     rows = [

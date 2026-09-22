@@ -73,18 +73,22 @@ def _hero():
             <div class="bg-orb orb-1"></div>
             <div class="bg-orb orb-2"></div>
             <div class="bg-orb orb-3"></div>
+            <svg class="hero-ecg" viewBox="0 0 1200 60" preserveAspectRatio="none">
+                <path d="M0,30 L140,30 L158,8 L176,52 L194,30 L420,30 L438,8 L456,52 L474,30 L700,30 L718,8 L736,52 L754,30 L980,30 L998,8 L1016,52 L1034,30 L1200,30"
+                      fill="none" stroke="#3ddad7" stroke-width="2"/>
+            </svg>
 
             <div class="hero-badge">
                 <span class="dot"></span>
-                2026 한국자동차연구원 퓨처모빌리티 아이디어 경진대회 · 1차 중간발표
+                2026 한국자동차연구원 퓨처모빌리티 아이디어 경진대회 · 최종발표
             </div>
 
             <h1>AI에게도<br><span class="gradient-text">건강검진</span>이 필요합니다</h1>
 
             <p class="lead">
-                <b>AI Hospital</b>은 다중 AI 모델의 토론(Debate)을 기반으로
-                자율주행 AI를 사고 전엔 진단·예방하고, 사고 후엔 원인을 규명해 치료하는
-                자율주행 안전 관제 시스템입니다.
+                <b>AI Hospital</b>은 인간과 자율주행 AI가 함께 운행하는 현장에서,
+                사고 전엔 AI를 진단·예방하고 사고 후엔 원인을 규명해 치료함으로써
+                AI의 오류로부터 안전을 확보하는 운영 체계입니다.
             </p>
 
             <div class="hero-stats">
@@ -160,7 +164,7 @@ def _solution():
     steps = [
         ("1", "모빌리티 AI", "자율주행차 · 셔틀 · 배송로봇"),
         ("2", "사고 전", "건강검진 & 예방"),
-        ("3", "AI HOSPITAL", "다중 AI 토론 진단·치료"),
+        ("3", "AI HOSPITAL", "관제사 개입 기반 진단·치료"),
         ("4", "사고 후", "원인 진단 & 치료"),
         ("5", "최종 목표", "안전성 · 신뢰성 향상"),
     ]
@@ -184,8 +188,8 @@ def _solution():
         _bullet(ic, t)
         for ic, t in [
             ("radio", "카메라·LiDAR·로그 등 사고 데이터 수집"),
-            ("layers", "Vision·Control·Planning 전문가 AI 토론"),
-            ("search", "타임라인 기반 Root Cause 진단"),
+            ("layers", "Vision·Control·Planning 모듈별 소견 종합"),
+            ("search", "타임라인 기반 Root Cause 진단 → 관제사 검토"),
             ("rocket", "재학습·검증 후 안전하게 재배포"),
         ]
     )
@@ -197,7 +201,8 @@ def _solution():
                 <div class="eyebrow">Solution</div>
                 <div class="section-title">AI도 사람처럼, <span class="gradient-text">전 생애주기</span> 건강 관리가 필요합니다</div>
                 <div class="section-sub">
-                    사고 전엔 예방하고, 사고 후엔 원인을 진단·치료해 안전하게 재배포하는 순환 구조입니다.
+                    사고 전엔 예방하고, 사고 후엔 원인을 진단·치료하며, 매 단계마다 관제사가 최종 판단을 내려
+                    AI 오류로부터 안전을 확보하는 순환 구조입니다.
                 </div>
             </div>
             <div class="flow-strip reveal">{flow_html}</div>
@@ -222,7 +227,7 @@ def _ecosystem():
     eco = [
         ("TRACK RECORD", "건강 기록부", "Health score·사고·모델 업데이트 이력을 축적합니다."),
         ("FEDERATED LEARNING", "연합학습", "모델 업데이트만 공유해 전체 AI 성능을 높입니다."),
-        ("MLLM DEBATE", "다중 전문가 토론", "다중 AI 협업으로 진단 정확도·신뢰성을 높입니다."),
+        ("ROUTE-BASED SCORING", "경로 기반 다각화 진단", "하나의 점수체계를 한 시점이 아니라 경로 전체 지점에서 다시 계산해 위험을 다각도로 포착합니다."),
         ("DIGITAL TWIN", "디지털 트윈", "가상 환경에서 시나리오를 안전하게 검증합니다."),
         ("KNOWLEDGE BASE", "지식 베이스", "축적된 경험을 전 모빌리티 AI에 공유합니다."),
     ]
@@ -289,7 +294,7 @@ def _footer():
     _md(
         """
         <div class="footer-note">
-            2026학년도 한국자동차연구원 퓨처모빌리티 아이디어 경진대회 · 1차 중간발표<br>
+            2026학년도 한국자동차연구원 퓨처모빌리티 아이디어 경진대회 · 최종발표<br>
             김다빈 · 김수림 · 장성호
         </div>
         """

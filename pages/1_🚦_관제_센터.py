@@ -1,15 +1,18 @@
 import streamlit as st
+import streamlit.components.v1 as st_components
 
 from components.car_diagram import chip_label, render_car_diagram
-from components.fleet_ui import render_fleet_table, render_kpi_strip
+from components.fleet_ui import render_fleet_table, render_kpi_strip, render_situation_panel
 from components.health_ui import (
     render_health_breakdown,
+    render_human_impact_panel,
     render_module_drilldown,
+    render_prevention_preview,
     render_report_view,
     report_markdown,
 )
 from components.mdutil import md
-from components.route_ui import render_route_cards, render_route_delta, render_route_map
+from components.route_ui import render_leaflet_route_map, render_route_cards, render_route_delta
 from components.theme import inject_top_markers, load_css, load_scroll_reveal
 from logic.actions import ACTION_MODULE_THRESHOLD, PREVENTION_ACTIONS, simulate_prevention_effect
 from logic.fleet import generate_fleet
@@ -79,12 +82,19 @@ label_map = {
     v["id"]: f"{v['id']} · {v['route']} · {int(round(v['_result']['health']['health_final']))}점"
     for v in fleet
 }
-selected_id = st.selectbox(
-    "드릴다운할 차량 선택 (Health Score 낮은 순)",
-    options=[v["id"] for v in ordered],
-    format_func=lambda vid: label_map[vid],
-    key="cc_selected_vehicle",
-)
+with st.container(border=True):
+    st.markdown(
+        '<div class="picker-label"><span class="picker-arrow">▸</span> 드릴다운할 차량 선택'
+        '<span class="picker-hint">Health Score 낮은 순 · 여기서 고른 차량을 아래에서 진단합니다</span></div>',
+        unsafe_allow_html=True,
+    )
+    selected_id = st.selectbox(
+        "드릴다운할 차량 선택 (Health Score 낮은 순)",
+        options=[v["id"] for v in ordered],
+        format_func=lambda vid: label_map[vid],
+        key="cc_selected_vehicle",
+        label_visibility="collapsed",
+    )
 st.markdown("</div>", unsafe_allow_html=True)
 md("</div>")
 
@@ -107,6 +117,7 @@ md(
 )
 
 st.markdown('<div class="demo-shell">', unsafe_allow_html=True)
+md(render_situation_panel(vehicle))
 col_car, col_chip = st.columns([1, 1.3], gap="large")
 
 with col_car:
@@ -151,7 +162,7 @@ if band_label == "정상":
         """
     )
     md("</div>")
-    md('<div class="footer-note">2026학년도 한국자동차연구원 퓨처모빌리티 아이디어 경진대회 · 1차 중간발표</div>')
+    md('<div class="footer-note">2026학년도 한국자동차연구원 퓨처모빌리티 아이디어 경진대회 · 최종발표</div>')
     load_scroll_reveal()
     st.stop()
 
@@ -167,14 +178,17 @@ md(
         <div class="eyebrow">Route Comparison</div>
         <div class="section-title" style="font-size:1.4rem;">후보 경로 비교 · 최적 우회 경로 추천</div>
         <div class="section-sub" style="margin-bottom:8px;">
-            {MODULE_LABELS[weak_module]} 모듈 저하를 반영해 남은 구간의 예상 Health Score를 경로별로 예측합니다.
+            별도의 경로 점수 산식이 아니라, 위에서 쓴 것과 같은 Health Score 계산식을
+            {MODULE_LABELS[weak_module]} 모듈 저하를 가정해 경로의 각 지점마다 다시 계산합니다 —
+            한 시점의 스냅샷이 아니라 경로 전체에 걸쳐 다각도로 봅니다.
         </div>
     </div>
     """
 )
-routes, recommended_key = generate_candidate_routes(selected_id, result["health"]["health_final"], weak_module)
 origin_label, dest_label = vehicle["route"].split(" → ", 1)
-md(render_route_map(routes, recommended_key, origin_label, dest_label))
+routes, recommended_key = generate_candidate_routes(vehicle, weak_module, origin_label, dest_label)
+md('<div class="route-map-label">실시간 경로 지도 · 마커를 클릭하면 그 지점의 상황을 볼 수 있습니다</div>')
+st_components.html(render_leaflet_route_map(routes, recommended_key, origin_label, dest_label), height=430)
 md(render_route_cards(routes, recommended_key))
 
 route_label_map = {r["key"]: r["label"] for r in routes}
@@ -202,7 +216,7 @@ md(
     <div class="reveal">
         <div class="eyebrow">Guide</div>
         <div class="section-title" style="font-size:1.4rem;">예방 조치 선택</div>
-        <div class="section-sub" style="margin-bottom:8px;">정상 구간을 벗어난 모듈마다 적용할 예방 조치를 하나씩 선택하세요.</div>
+        <div class="section-sub" style="margin-bottom:8px;">정상 구간을 벗어난 모듈마다 적용할 예방 조치를 하나 이상 선택하세요. 여러 개를 함께 선택하면 효과가 합산됩니다.</div>
     </div>
     """
 )
@@ -219,10 +233,10 @@ for m in weak_modules:
         f"{MODULE_LABELS[m]} · {score}점 · {band[2]}</div>"
         f'<p style="color:var(--text-lo);font-size:0.82rem;margin:0 0 10px 0;">시스템 기본 권고: {band[4]}</p>'
     )
-    chosen_actions[m] = st.radio(
+    chosen_actions[m] = st.multiselect(
         f"{MODULE_LABELS[m]} 예방 조치",
         options=PREVENTION_ACTIONS[m],
-        horizontal=True,
+        default=[PREVENTION_ACTIONS[m][0]],
         key=f"cc_action_{selected_id}_{m}",
         label_visibility="collapsed",
     )
@@ -235,26 +249,7 @@ st.markdown("</div>", unsafe_allow_html=True)
 sim_result = simulate_prevention_effect(vehicle, chosen_actions)
 cur_final = int(round(result["health"]["health_final"]))
 sim_final = int(round(sim_result["health"]["health_final"]))
-diff = sim_final - cur_final
-tone = "var(--accent-teal)" if diff > 0 else "var(--text-lo)"
-module_deltas = "".join(
-    f'<span class="chip route-tag">{MODULE_LABELS[m]} {result["modules"][m]}→{sim_result["modules"][m]}점</span>'
-    for m in weak_modules
-)
-md(
-    f"""
-    <div class="verdict-panel reveal" style="margin-top:22px;">
-        <div class="vlabel">Live Preview · 조치 적용 시뮬레이션</div>
-        <p>선택한 예방 조치를 적용하면 Health Score가
-            <b>{cur_final}점 → {sim_final}점</b>
-            (<span style="color:{tone};font-weight:700;">{'+' if diff > 0 else ''}{diff}점</span>)
-            으로 개선될 것으로 예상됩니다. 조치를 바꾸면 이 예상치도 즉시 갱신됩니다.
-            <span style="color:var(--text-lo);">(참고용 추정치이며 확정된 산식은 아닙니다)</span>
-        </p>
-        <div class="chip-row route-tags" style="margin-top:14px;">{module_deltas}</div>
-    </div>
-    """
-)
+md(render_prevention_preview(cur_final, sim_final, weak_modules, result["modules"], sim_result["modules"]))
 md("</div>")
 
 # ---------------------------------------------------------------------------
@@ -271,11 +266,17 @@ md(
 )
 
 applied_key = f"cc_applied_{selected_id}"
+total_actions = sum(len(chosen_actions[m]) for m in weak_modules)
 st.markdown('<div class="demo-shell">', unsafe_allow_html=True)
+md(render_human_impact_panel(routes[0], chosen_route, cur_final, sim_final, total_actions))
+st.markdown('<div style="height:22px;"></div>', unsafe_allow_html=True)
 if st.button("✅ 예방 운행계획 적용", key=f"cc_apply_{selected_id}", type="primary"):
     vehicle["actions"] = (
         [f"우회 경로 적용: {chosen_route['label']} (예상 최저 점수 {chosen_route['min_score']}, {chosen_route['distance_km']}km · 약 {chosen_route['eta_min']}분)"]
-        + [f"{MODULE_LABELS[m]} 모듈 예방 조치: {chosen_actions[m]}" for m in weak_modules]
+        + [
+            f"{MODULE_LABELS[m]} 모듈 예방 조치: {', '.join(chosen_actions[m]) if chosen_actions[m] else '없음'}"
+            for m in weak_modules
+        ]
         + [f"예상 개선 효과(참고용 추정): Health Score {cur_final}점 → {sim_final}점"]
     )
     st.session_state[applied_key] = True
@@ -294,6 +295,6 @@ else:
     st.caption("경로와 예방 조치를 선택한 뒤 '예방 운행계획 적용'을 눌러보세요.")
 md("</div>")
 
-md('<div class="footer-note">2026학년도 한국자동차연구원 퓨처모빌리티 아이디어 경진대회 · 1차 중간발표</div>')
+md('<div class="footer-note">2026학년도 한국자동차연구원 퓨처모빌리티 아이디어 경진대회 · 최종발표</div>')
 
 load_scroll_reveal()

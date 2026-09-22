@@ -1,74 +1,214 @@
 """Render helpers for the Control Room's route-comparison step.
 
-Same single-call HTML-string rule as the other components/*_ui.py modules.
-Map + sparklines are hand-rolled inline SVG (no chart library), consistent
-with components/car_diagram.py's self-drawn-primitives approach.
+Same single-call HTML-string rule as the other components/*_ui.py modules,
+except render_leaflet_route_map() which returns a full standalone HTML
+document meant for st.components.v1.html() (it needs its own <head> for the
+Leaflet CDN assets, so it can't share the page's single st.markdown() call).
+Sparklines are hand-rolled inline SVG (no chart library), consistent with
+components/car_diagram.py's self-drawn-primitives approach.
 """
+
+import json
 
 from logic.health_score import BAND_COLORS, HEALTH_BANDS, band_for
 
 # ---------------------------------------------------------------------------
-# Schematic origin->destination map with the 3 candidate paths
+# Real-map route view (Leaflet + OpenStreetMap tiles, CSS-inverted to a dark
+# basemap — plain OSM tiles stay free/keyless, unlike hosted dark tile sets)
 # ---------------------------------------------------------------------------
-_MAP_W, _MAP_H = 640, 190
-_ORIGIN = (50, 100)
-_DEST = (590, 100)
-_CONTROL_Y = {"A": 100, "B": 40, "C": 168}
 
 
-def _bezier_point(p0: tuple, p1: tuple, p2: tuple, t: float) -> tuple:
-    x = (1 - t) ** 2 * p0[0] + 2 * (1 - t) * t * p1[0] + t**2 * p2[0]
-    y = (1 - t) ** 2 * p0[1] + 2 * (1 - t) * t * p1[1] + t**2 * p2[1]
-    return x, y
+def render_leaflet_route_map(routes: list[dict], recommended_key: str, origin_label: str, dest_label: str) -> str:
+    """Standalone HTML document (own <head>/CDN includes) for
+    st.components.v1.html() — draws the real Seoul·Gyeonggi·Incheon-area map
+    with each candidate route as a curved polyline between the vehicle's
+    origin/destination coordinates, and a marker per time-step waypoint
+    (colored red + tooltip where that step has a risk factor)."""
+    data = {
+        "routes": [
+            {
+                "key": r["key"],
+                "label": r["label"],
+                "color": BAND_COLORS.get(r["band"][2], "#8892a8"),
+                "recommended": r["key"] == recommended_key,
+                "coords": r["coords"],
+                "scores": r["scores"],
+                "time_labels": r["time_labels"],
+                "risk_points": r["risk_points"],
+                "min_score": r["min_score"],
+                "band_label": r["band"][2],
+            }
+            for r in routes
+        ],
+        "origin": {"label": origin_label, "coords": routes[0]["coords"][0]},
+        "dest": {"label": dest_label, "coords": routes[0]["coords"][-1]},
+    }
+    data_json = json.dumps(data, ensure_ascii=False)
 
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  html, body {{ height:100%; margin:0; background:transparent; }}
+  body {{ font-family:'Malgun Gothic','Noto Sans KR',sans-serif; padding:2px; box-sizing:border-box; }}
+  #map {{
+    height:calc(100% - 4px); width:calc(100% - 4px); background:#0c1120;
+    border-radius:16px; border:1px solid rgba(255,255,255,0.14);
+    box-shadow:0 8px 32px rgba(0,0,0,0.45);
+    overflow:hidden;
+  }}
+  /* Plain OpenStreetMap tiles (free, no API key) inverted into a dark
+     basemap — the hosted CARTO dark tiles now require a key, this doesn't. */
+  .leaflet-tile-pane {{ filter:invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.9) saturate(0.7); }}
+  .leaflet-popup-content-wrapper, .leaflet-popup-tip {{ background:#131a2e; color:#e7e9f5; }}
+  .leaflet-popup-content-wrapper {{ border-radius:10px; border:1px solid rgba(255,255,255,0.14); }}
+  .leaflet-popup-content {{ font-size:13px; line-height:1.5; margin:10px 12px; }}
+  .leaflet-container a.leaflet-popup-close-button {{ color:#b7bfd6; }}
+  .route-tooltip {{ background:#131a2e; color:#e7e9f5; border:1px solid rgba(255,255,255,0.2); font-weight:700; }}
+  .leaflet-control-attribution {{ background:rgba(12,17,32,0.7)!important; color:#7c8399!important; font-size:10px; }}
+  .leaflet-control-attribution a {{ color:#8fb4e8!important; }}
+  .leaflet-control-zoom a {{ background:#131a2e!important; color:#e7e9f5!important; border-color:rgba(255,255,255,0.14)!important; }}
+  .leaflet-control-zoom a:hover {{ background:#1b2440!important; }}
+  .leaflet-control-zoom {{ border:1px solid rgba(255,255,255,0.14)!important; }}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<script>
+  const DATA = {data_json};
+  const map = L.map('map', {{ zoomControl: true, attributionControl: true, scrollWheelZoom: true }});
+  L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+  }}).addTo(map);
 
-def render_route_map(routes: list[dict], recommended_key: str, origin_label: str, dest_label: str) -> str:
-    parts = [
-        f'<circle cx="{_ORIGIN[0]}" cy="{_ORIGIN[1]}" r="7" fill="#3ddad7"/>',
-        f'<text x="{_ORIGIN[0]}" y="{_ORIGIN[1] - 20}" text-anchor="middle" font-size="16" '
-        f'font-weight="700" fill="#e7e9f5">출발 · {origin_label}</text>',
-        f'<circle cx="{_DEST[0]}" cy="{_DEST[1]}" r="7" fill="#ff6b4a"/>',
-        f'<text x="{_DEST[0]}" y="{_DEST[1] - 20}" text-anchor="middle" font-size="16" '
-        f'font-weight="700" fill="#e7e9f5">도착 · {dest_label}</text>',
-    ]
+  const originIcon = L.divIcon({{className:'', html:'<div style="width:14px;height:14px;border-radius:50%;background:#3ddad7;border:2px solid #fff;box-shadow:0 0 8px #3ddad7;"></div>', iconSize:[14,14], iconAnchor:[7,7]}});
+  const destIcon = L.divIcon({{className:'', html:'<div style="width:14px;height:14px;border-radius:50%;background:#ff6b4a;border:2px solid #fff;box-shadow:0 0 8px #ff6b4a;"></div>', iconSize:[14,14], iconAnchor:[7,7]}});
+  L.marker(DATA.origin.coords, {{icon: originIcon}}).addTo(map).bindPopup('출발 · ' + DATA.origin.label);
+  L.marker(DATA.dest.coords, {{icon: destIcon}}).addTo(map).bindPopup('도착 · ' + DATA.dest.label);
 
-    for r in routes:
-        key = r["key"]
-        is_recommended = key == recommended_key
-        color = BAND_COLORS.get(r["band"][2], "#8892a8")
-        control = (320, _CONTROL_Y.get(key, 100))
-        path_d = f"M {_ORIGIN[0]},{_ORIGIN[1]} Q {control[0]},{control[1]} {_DEST[0]},{_DEST[1]}"
-        width = 5 if is_recommended else 2.5
-        opacity = 0.95 if is_recommended else 0.4
+  // Resamples a polyline down to n evenly-spaced (by arc length) points —
+  // used so time/risk markers land at consistent positions whether the line
+  // is our 5-point synthetic curve or a real multi-hundred-point road path.
+  function resample(points, n) {{
+      if (points.length <= n) return points;
+      const distKm = (a, b) => {{
+          const dLat = (b[0] - a[0]) * 111;
+          const dLng = (b[1] - a[1]) * 111 * Math.cos(a[0] * Math.PI / 180);
+          return Math.hypot(dLat, dLng);
+      }};
+      const cum = [0];
+      for (let i = 1; i < points.length; i++) cum.push(cum[i - 1] + distKm(points[i - 1], points[i]));
+      const total = cum[cum.length - 1];
+      const out = [];
+      for (let i = 0; i < n; i++) {{
+          const target = total * i / (n - 1);
+          let j = 0;
+          while (j < cum.length - 2 && cum[j + 1] < target) j++;
+          const segLen = (cum[j + 1] - cum[j]) || 1;
+          const t = (target - cum[j]) / segLen;
+          const p0 = points[j], p1 = points[j + 1];
+          out.push([p0[0] + (p1[0] - p0[0]) * t, p0[1] + (p1[1] - p0[1]) * t]);
+      }}
+      return out;
+  }}
 
-        parts.append(
-            f'<path d="{path_d}" fill="none" stroke="{color}" stroke-width="{width}" '
-            f'opacity="{opacity}" stroke-linecap="round"/>'
-        )
+  const routeLayer = L.layerGroup().addTo(map);
 
-        mx, my = _bezier_point(_ORIGIN, control, _DEST, 0.5)
-        check = " ✓" if is_recommended else ""
-        parts.append(
-            f'<text x="{mx:.0f}" y="{my - 14:.0f}" text-anchor="middle" font-size="16" '
-            f'font-weight="800" fill="{color}">{key}{check}</text>'
-        )
+  function drawRoutes(lineCoordsList) {{
+      routeLayer.clearLayers();
+      const bounds = [DATA.origin.coords, DATA.dest.coords];
+      DATA.routes.forEach((r, idx) => {{
+          const lineCoords = lineCoordsList[idx];
+          lineCoords.forEach(p => bounds.push(p));
+          const line = L.polyline(lineCoords, {{
+              color: r.color,
+              weight: r.recommended ? 5 : 3,
+              opacity: r.recommended ? 0.95 : 0.55,
+              dashArray: r.recommended ? null : '7 7'
+          }}).addTo(routeLayer);
+          line.bindTooltip((r.recommended ? '✓ ' : '') + r.label, {{sticky:true, className:'route-tooltip'}});
 
-        if r["min_score"] < 50:
-            dx, dy = _bezier_point(_ORIGIN, control, _DEST, 0.65)
-            parts.append(
-                f'<circle cx="{dx:.0f}" cy="{dy:.0f}" r="17" fill="{color}" opacity="0.18" '
-                f'stroke="{color}" stroke-width="1.5" stroke-dasharray="3 3"/>'
-                f'<text x="{dx:.0f}" y="{dy + 6:.0f}" text-anchor="middle" font-size="17" '
-                f'font-weight="800" fill="{color}">!</text>'
-            )
+          const markerPts = resample(lineCoords, r.coords.length);
+          markerPts.forEach((c, i) => {{
+              if (i === 0 || i === markerPts.length - 1) return;
+              const risk = r.risk_points.find(rp => rp.idx === i);
+              const marker = L.circleMarker(c, {{
+                  radius: risk ? 7 : 4.5,
+                  color: risk ? '#ff3d63' : r.color,
+                  fillColor: risk ? '#ff3d63' : r.color,
+                  fillOpacity: 0.9,
+                  weight: 2
+              }}).addTo(routeLayer);
+              const riskHtml = risk ? `<br><b style="color:#ff6b7d;">⚠ ${{risk.tag}}</b>` : '';
+              marker.bindPopup(
+                  `<b>${{r.label}}</b><br>${{r.time_labels[i]}} 지점 · 예상 점수 ${{r.scores[i]}}${{riskHtml}}`
+              );
+          }});
+      }});
+      map.fitBounds(bounds, {{padding: [36, 36]}});
+  }}
 
-    body = "".join(parts)
-    return f"""
-    <div class="glass-card reveal route-map-card" style="padding:24px;">
-        <div class="route-map-label">경로 후보 미리보기 · 빨간 영역은 예측 위험 구간</div>
-        <svg viewBox="0 0 {_MAP_W} {_MAP_H}" width="100%" height="190" preserveAspectRatio="xMidYMid meet">{body}</svg>
-    </div>
-    """
+  // First paint: our synthetic bowed curves, so the map is never blank.
+  drawRoutes(DATA.routes.map(r => r.coords));
+
+  // Then try to upgrade every route to real road-following geometry via
+  // OSRM's public routing demo server (free, no key) — never leaves a route
+  // as a pure geometric offset, because that can cut across water/terrain
+  // for coastal pairs. alternatives=true asks for more than one path
+  // between the same two points; when there aren't enough real alternatives
+  // for all candidates, the rest are fetched as a route THROUGH a via-point
+  // near our synthetic curve's midpoint — OSRM snaps any coordinate to the
+  // nearest real road, so the result always stays on the actual road
+  // network even if the via-point itself lands in the sea. If a request
+  // fails for any reason (offline, rate-limited), that route just keeps its
+  // synthetic curve — no error shown to the user.
+  async function fetchJson(url) {{
+      try {{
+          const res = await fetch(url);
+          if (!res.ok) return null;
+          return await res.json();
+      }} catch (e) {{
+          return null;
+      }}
+  }}
+
+  async function fetchRealRoutes(origin, dest) {{
+      const url = `https://router.project-osrm.org/route/v1/driving/${{origin[1]}},${{origin[0]}};${{dest[1]}},${{dest[0]}}?overview=full&geometries=geojson&alternatives=true`;
+      const data = await fetchJson(url);
+      if (!data || !data.routes || !data.routes.length) return null;
+      const sorted = [...data.routes].sort((a, b) => a.distance - b.distance);
+      return sorted.map(rt => rt.geometry.coordinates.map(c => [c[1], c[0]]));
+  }}
+
+  async function fetchViaRoute(origin, viaPoint, dest) {{
+      const url = `https://router.project-osrm.org/route/v1/driving/${{origin[1]}},${{origin[0]}};${{viaPoint[1]}},${{viaPoint[0]}};${{dest[1]}},${{dest[0]}}?overview=full&geometries=geojson`;
+      const data = await fetchJson(url);
+      if (!data || !data.routes || !data.routes.length) return null;
+      return data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+  }}
+
+  (async () => {{
+      const real = await fetchRealRoutes(DATA.origin.coords, DATA.dest.coords);
+      const lineCoordsList = [];
+      for (let idx = 0; idx < DATA.routes.length; idx++) {{
+          if (real && real[idx]) {{
+              lineCoordsList.push(real[idx]);
+              continue;
+          }}
+          const synthetic = DATA.routes[idx].coords;
+          const viaPoint = synthetic[Math.floor(synthetic.length / 2)];
+          const viaRoute = await fetchViaRoute(DATA.origin.coords, viaPoint, DATA.dest.coords);
+          lineCoordsList.push(viaRoute || synthetic);
+      }}
+      drawRoutes(lineCoordsList);
+  }})();
+</script>
+</body>
+</html>"""
 
 
 # ---------------------------------------------------------------------------
@@ -144,6 +284,8 @@ def render_route_cards(routes: list[dict], recommended_key: str) -> str:
                     최저 예측 점수 {r['min_score']}
                     <span class="band-name">({r['band'][2]})</span>
                 </div>
+                <div class="route-score-track"><div class="route-score-fill" style="width:{r['min_score']}%;background:{color};"></div></div>
+                <div class="route-tags-label">위험 요인 · 이 점수가 나온 이유</div>
                 <div class="chip-row route-tags">{tags}</div>
             </div>
             """

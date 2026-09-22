@@ -92,15 +92,18 @@ ACTION_EFFECTS = {
 }
 
 
-def simulate_prevention_effect(vehicle: dict, chosen_actions: dict[str, str]) -> dict:
+def simulate_prevention_effect(vehicle: dict, chosen_actions: dict[str, list[str]]) -> dict:
     """Recomputes Health Score assuming each weak module's components are
-    boosted by its *chosen action's* weight, for the Guide step's live
+    boosted by the *sum* of its chosen actions' weights (a controller can
+    stack more than one action per module), for the Guide step's live
     before/after preview. Runs through the same evaluate_scenario()
     pipeline as the real score, so the *math* is real — only the size of
     each action's boost is an estimate."""
     sim_vehicle = copy.deepcopy(vehicle)
-    for module, action in chosen_actions.items():
-        boost = ACTION_EFFECTS[module][action]
+    for module, actions in chosen_actions.items():
+        if not actions:
+            continue
+        boost = sum(ACTION_EFFECTS[module][a] for a in actions)
         for key, value in sim_vehicle["components"][module].items():
             sim_vehicle["components"][module][key] = min(0.95, value + boost)
     return evaluate_scenario(sim_vehicle)

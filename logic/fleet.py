@@ -46,6 +46,39 @@ ROUTE_PLACES = [
     ("테크노파크", "산학협력관"),
 ]
 
+# Approximate real-world (lat, lng) for every place name above, so the
+# Control Room's route map can render on an actual OpenStreetMap-tiled map
+# instead of an abstract diagram. These are plausible coordinates within the
+# Seoul · Gyeonggi · Incheon metro area (a realistic Korean AV pilot-zone
+# region) picked to match each fictional place's name/vibe — not precise
+# geocoding, since the place names themselves are PoC fixtures.
+PLACE_COORDS = {
+    "강남대로": (37.4979, 127.0276),
+    "물류센터 A": (37.4750, 127.1220),
+    "판교테크노밸리": (37.3947, 127.1109),
+    "정자역 환승센터": (37.3667, 127.1082),
+    "공단대로": (37.3219, 126.8309),
+    "제2공장": (37.3400, 126.8500),
+    "신도시순환로": (37.2003, 127.0827),
+    "환승센터": (37.1950, 127.0950),
+    "송도국제대로": (37.3894, 126.6402),
+    "인천항 배후단지": (37.4400, 126.5800),
+    "대학로": (37.5823, 127.0018),
+    "학생회관": (37.5800, 127.0050),
+    "구도심 상가": (37.2636, 127.0286),
+    "중앙시장": (37.2700, 127.0150),
+    "해안순환로": (37.4600, 126.3900),
+    "요트경기장": (37.4495, 126.3745),
+    "첨단산업로": (37.4100, 127.1000),
+    "R&D센터": (37.4050, 127.1150),
+    "신공항대로": (37.4602, 126.4407),
+    "화물터미널": (37.4489, 126.4505),
+    "강변북로 지선": (37.5400, 126.9200),
+    "복합환승센터": (37.5299, 126.9648),
+    "테크노파크": (37.3900, 126.6500),
+    "산학협력관": (37.3850, 126.6450),
+}
+
 # (reason, penalty_lo, penalty_hi) — pulled from context tags in this pool
 # depending on the vehicle's severity tier.
 _HEALTHY_CONTEXT = [

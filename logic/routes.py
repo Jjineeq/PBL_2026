@@ -37,11 +37,14 @@ _RISK_TAGS = {
 # key, label, distance factor, eta factor, trend, perpendicular bow offset (km)
 # — the bow offset is what makes each route visibly diverge on the map: A
 # runs close to the straight line, B bows one way, C bows further the other
-# way (and is the longest, matching its larger distance factor).
+# way (and is the longest, matching its larger distance factor). Offsets are
+# wide enough (multi-km) that even OSRM's via-point fallback (which snaps
+# the bow's midpoint to the nearest real road) tends to land on a genuinely
+# different corridor instead of drifting back onto the same street.
 _ROUTE_DEFS = [
-    ("A", "경로 A (최단 경로)", 1.00, 1.00, "decline", 0.3),
-    ("B", "경로 B (대안 경로 1)", 1.12, 1.15, "flat", -1.3),
-    ("C", "경로 C (대안 경로 2)", 1.28, 1.35, "recover", 2.1),
+    ("A", "경로 A (최단 경로)", 1.00, 1.00, "decline", 0.5),
+    ("B", "경로 B (대안 경로 1)", 1.15, 1.20, "flat", -2.4),
+    ("C", "경로 C (대안 경로 2)", 1.35, 1.45, "recover", 3.6),
 ]
 
 _STEPS = 5

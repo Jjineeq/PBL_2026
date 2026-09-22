@@ -17,19 +17,47 @@ from logic.health_score import BAND_COLORS, HEALTH_BANDS, band_for
 # basemap — plain OSM tiles stay free/keyless, unlike hosted dark tile sets)
 # ---------------------------------------------------------------------------
 
+# Fixed per-route-identity colors for the map (independent of health band) —
+# two routes can land in the same band (e.g. both "심각") and would render
+# identically if colored by band, making it impossible to tell them apart on
+# the map. These stay constant so "경로 A" is always the same color no matter
+# how it scores. Chosen away from the red/orange severity spectrum used for
+# bands/risk markers elsewhere, so route identity and risk severity never
+# read as the same signal.
+ROUTE_COLORS = {"A": "#4f9dff", "B": "#a78bfa", "C": "#34d399"}
+
+# One glyph per risk tag (logic/routes.py's _RISK_TAGS pool) so the map shows
+# *what kind* of risk a waypoint carries at a glance, not just a generic red
+# dot. Keyed by the exact Korean tag text since that's what routes carry.
+RISK_TAG_ICONS = {
+    "보행자 밀집": "🚶",
+    "인도 인접 차선": "🚏",
+    "야간 시야 저하": "🌙",
+    "합류구간": "🔀",
+    "비보호 좌회전": "↩️",
+    "차량 급변침 잦음": "🌀",
+    "복잡 교차로": "🚦",
+    "차선 선택지 과다": "↔️",
+    "공사구간": "🚧",
+    "급커브 구간": "↪️",
+    "좁은 차선": "📏",
+    "노면 마찰력 저하": "💧",
+}
+
 
 def render_leaflet_route_map(routes: list[dict], recommended_key: str, origin_label: str, dest_label: str) -> str:
     """Standalone HTML document (own <head>/CDN includes) for
     st.components.v1.html() — draws the real Seoul·Gyeonggi·Incheon-area map
     with each candidate route as a curved polyline between the vehicle's
-    origin/destination coordinates, and a marker per time-step waypoint
-    (colored red + tooltip where that step has a risk factor)."""
+    origin/destination coordinates (colored by route identity, not band), a
+    tagged icon per risk waypoint, and a pale underlay wherever two or more
+    routes actually share the same stretch of road."""
     data = {
         "routes": [
             {
                 "key": r["key"],
                 "label": r["label"],
-                "color": BAND_COLORS.get(r["band"][2], "#8892a8"),
+                "color": ROUTE_COLORS.get(r["key"], "#8892a8"),
                 "recommended": r["key"] == recommended_key,
                 "coords": r["coords"],
                 "scores": r["scores"],
@@ -42,6 +70,7 @@ def render_leaflet_route_map(routes: list[dict], recommended_key: str, origin_la
         ],
         "origin": {"label": origin_label, "coords": routes[0]["coords"][0]},
         "dest": {"label": dest_label, "coords": routes[0]["coords"][-1]},
+        "risk_icons": RISK_TAG_ICONS,
     }
     data_json = json.dumps(data, ensure_ascii=False)
 
@@ -73,6 +102,20 @@ def render_leaflet_route_map(routes: list[dict], recommended_key: str, origin_la
   .leaflet-control-zoom a {{ background:#131a2e!important; color:#e7e9f5!important; border-color:rgba(255,255,255,0.14)!important; }}
   .leaflet-control-zoom a:hover {{ background:#1b2440!important; }}
   .leaflet-control-zoom {{ border:1px solid rgba(255,255,255,0.14)!important; }}
+  .route-legend {{
+    background:#131a2e; color:#e7e9f5; border:1px solid rgba(255,255,255,0.16);
+    border-radius:10px; padding:8px 10px; font-size:11px; line-height:1.5;
+    box-shadow:0 4px 16px rgba(0,0,0,0.4); max-width:190px;
+  }}
+  .route-filter {{
+    display:flex; gap:3px; background:#131a2e; border:1px solid rgba(255,255,255,0.16);
+    border-radius:9px; padding:3px; box-shadow:0 4px 16px rgba(0,0,0,0.4);
+  }}
+  .route-filter-btn {{
+    background:transparent; border:none; color:#b7bfd6; font-size:11.5px; font-weight:700;
+    padding:5px 10px; border-radius:6px; cursor:pointer; font-family:inherit; transition:background 0.15s;
+  }}
+  .route-filter-btn:hover {{ background:rgba(255,255,255,0.1); }}
 </style>
 </head>
 <body>
@@ -117,38 +160,224 @@ def render_leaflet_route_map(routes: list[dict], recommended_key: str, origin_la
   }}
 
   const routeLayer = L.layerGroup().addTo(map);
+  const routeColorByKey = Object.fromEntries(DATA.routes.map(r => [r.key, r.color]));
+
+  // One sub-layer-group per route key (plus one for the shared-corridor
+  // underlay) so the filter buttons below can show/hide a single route
+  // without having to know which individual polylines/markers belong to it.
+  // Rebuilt on every drawRoutes() call; the filter buttons always read the
+  // current contents through this same object reference.
+  const routeGroups = {{}};
+  let overlapGroup = null;
+  let activeFilter = 'all';
+  // tag -> emoji actually used by each route, filled in by drawRoutes() —
+  // applyFilter() re-slices this by whichever route(s) are currently
+  // visible, so the legend only ever lists what's actually on screen.
+  let usedTagsByRoute = {{}};
+
+  // Small always-on corner panel: which color is which route, which risk
+  // icons are actually shown for the currently-visible route(s), and a note
+  // about the shared-segment underlay (hidden when filtered to one route,
+  // since "overlap" only means something when comparing routes). Content is
+  // rebuilt by applyFilter() every time the routes redraw or the filter
+  // changes.
+  const legendControl = L.control({{position: 'bottomleft'}});
+  legendControl.onAdd = function () {{
+      const div = L.DomUtil.create('div', 'route-legend');
+      div.id = 'route-legend';
+      return div;
+  }};
+  legendControl.addTo(map);
+
+  // Top-right toggle: 전체 / A / B / C — shows just one route at a time (or
+  // all three). Built once; drawRoutes() only ever repopulates routeGroups,
+  // so these handlers keep working across the later real-route redraw.
+  const filterControl = L.control({{position: 'topright'}});
+  filterControl.onAdd = function () {{
+      const div = L.DomUtil.create('div', 'route-filter');
+      L.DomEvent.disableClickPropagation(div);
+      [['all', '전체'], ...DATA.routes.map(r => [r.key, r.key])].forEach(([key, label]) => {{
+          const btn = document.createElement('button');
+          btn.className = 'route-filter-btn';
+          btn.dataset.key = key;
+          btn.textContent = label;
+          btn.addEventListener('click', () => {{ activeFilter = key; applyFilter(); }});
+          div.appendChild(btn);
+      }});
+      return div;
+  }};
+  filterControl.addTo(map);
+
+  function applyFilter() {{
+      // NOTE: routeGroups/overlapGroup are nested INSIDE routeLayer (not
+      // added to the map directly), so membership must be checked against
+      // routeLayer.hasLayer(), not map.hasLayer() — the latter only knows
+      // about routeLayer itself and would always report these as absent.
+      Object.keys(routeGroups).forEach(key => {{
+          const shouldShow = activeFilter === 'all' || activeFilter === key;
+          const group = routeGroups[key];
+          if (shouldShow && !routeLayer.hasLayer(group)) group.addTo(routeLayer);
+          if (!shouldShow && routeLayer.hasLayer(group)) routeLayer.removeLayer(group);
+      }});
+      if (overlapGroup) {{
+          if (activeFilter === 'all' && !routeLayer.hasLayer(overlapGroup)) overlapGroup.addTo(routeLayer);
+          if (activeFilter !== 'all' && routeLayer.hasLayer(overlapGroup)) routeLayer.removeLayer(overlapGroup);
+      }}
+
+      document.querySelectorAll('.route-filter-btn').forEach(btn => {{
+          const isActive = btn.dataset.key === activeFilter;
+          const activeColor = btn.dataset.key === 'all' ? '#e7e9f5' : (routeColorByKey[btn.dataset.key] || '#e7e9f5');
+          btn.style.background = isActive ? activeColor : 'transparent';
+          btn.style.color = isActive ? '#0c1120' : '#b7bfd6';
+      }});
+
+      let legendHtml = '';
+      DATA.routes.forEach(r => {{
+          const dim = activeFilter !== 'all' && activeFilter !== r.key;
+          legendHtml += `<div style="display:flex;align-items:center;gap:6px;margin:2px 0;opacity:${{dim ? 0.35 : 1}};">` +
+              `<span style="width:14px;height:4px;border-radius:2px;background:${{r.color}};display:inline-block;flex-shrink:0;"></span>` +
+              `<span>${{r.label}}${{r.recommended ? ' · 추천' : ''}}</span></div>`;
+      }});
+      const visibleKeys = activeFilter === 'all' ? DATA.routes.map(r => r.key) : [activeFilter];
+      const visibleTags = new Map();
+      visibleKeys.forEach(k => {{
+          Object.entries(usedTagsByRoute[k] || {{}}).forEach(([tag, emoji]) => visibleTags.set(tag, emoji));
+      }});
+      if (visibleTags.size) {{
+          legendHtml += '<div style="margin:6px 0 2px 0;border-top:1px solid rgba(255,255,255,0.14);padding-top:6px;">';
+          visibleTags.forEach((emoji, tag) => {{
+              legendHtml += `<div style="margin:2px 0;">${{emoji}} ${{tag}}</div>`;
+          }});
+          legendHtml += '</div>';
+      }}
+      if (activeFilter === 'all') {{
+          legendHtml += '<div style="margin-top:6px;color:#8892a8;">— 굵은 회색 구간 = 경로 겹침</div>';
+      }}
+      const legendEl = document.getElementById('route-legend');
+      if (legendEl) legendEl.innerHTML = legendHtml;
+  }}
+
+  // Same arc-length resampling as resample() below, but WITHOUT the
+  // short-circuit for short inputs — always returns exactly n points, so a
+  // 5-point synthetic curve can be densified (not just a long real polyline
+  // downsampled) for the point-by-point overlap comparison in
+  // findOverlapRuns().
+  function densify(points, n) {{
+      if (points.length < 2) return points;
+      const distKm = (a, b) => {{
+          const dLat = (b[0] - a[0]) * 111;
+          const dLng = (b[1] - a[1]) * 111 * Math.cos(a[0] * Math.PI / 180);
+          return Math.hypot(dLat, dLng);
+      }};
+      const cum = [0];
+      for (let i = 1; i < points.length; i++) cum.push(cum[i - 1] + distKm(points[i - 1], points[i]));
+      const total = cum[cum.length - 1] || 1;
+      const out = [];
+      for (let i = 0; i < n; i++) {{
+          const target = total * i / (n - 1);
+          let j = 0;
+          while (j < cum.length - 2 && cum[j + 1] < target) j++;
+          const segLen = (cum[j + 1] - cum[j]) || 1;
+          const t = (target - cum[j]) / segLen;
+          const p0 = points[j], p1 = points[j + 1];
+          out.push([p0[0] + (p1[0] - p0[0]) * t, p0[1] + (p1[1] - p0[1]) * t]);
+      }}
+      return out;
+  }}
+
+  // For each route, finds the index runs (into its own densified points)
+  // that fall within ~35m of ANY other route's densified points — i.e. the
+  // stretches where they're actually driving over the same road, most
+  // commonly right at the shared origin/destination. Drawn as a pale
+  // underlay so a shared corridor reads as "one road, three routes use it"
+  // instead of three colored lines stacked on top of each other.
+  function findOverlapRuns(lineCoordsList) {{
+      const OVERLAP_KM = 0.035;
+      const dense = lineCoordsList.map(pts => densify(pts, 60));
+      const distKm = (a, b) => {{
+          const dLat = (b[0] - a[0]) * 111;
+          const dLng = (b[1] - a[1]) * 111 * Math.cos(a[0] * Math.PI / 180);
+          return Math.hypot(dLat, dLng);
+      }};
+      return dense.map((pts, i) => {{
+          const shared = pts.map(pt => dense.some((other, j) => j !== i && other.some(op => distKm(pt, op) < OVERLAP_KM)));
+          const runs = [];
+          let start = null;
+          for (let k = 0; k < shared.length; k++) {{
+              if (shared[k]) {{
+                  if (start === null) start = k;
+              }} else if (start !== null) {{
+                  runs.push([start, k - 1]);
+                  start = null;
+              }}
+          }}
+          if (start !== null) runs.push([start, shared.length - 1]);
+          return {{ points: pts, runs }};
+      }});
+  }}
 
   function drawRoutes(lineCoordsList) {{
       routeLayer.clearLayers();
+      Object.keys(routeGroups).forEach(k => delete routeGroups[k]);
+      usedTagsByRoute = {{}};
       const bounds = [DATA.origin.coords, DATA.dest.coords];
+
+      // Shared-corridor underlay — its own group so applyFilter() can hide
+      // it entirely when only one route is showing.
+      overlapGroup = L.layerGroup();
+      findOverlapRuns(lineCoordsList).forEach(info => {{
+          info.runs.forEach(([s, e]) => {{
+              if (e - s < 1) return;
+              L.polyline(info.points.slice(s, e + 1), {{
+                  color: '#e7e9f5', weight: 11, opacity: 0.16, lineCap: 'round'
+              }}).addTo(overlapGroup);
+          }});
+      }});
+
       DATA.routes.forEach((r, idx) => {{
+          const group = L.layerGroup();
+          usedTagsByRoute[r.key] = {{}};
           const lineCoords = lineCoordsList[idx];
           lineCoords.forEach(p => bounds.push(p));
           const line = L.polyline(lineCoords, {{
               color: r.color,
               weight: r.recommended ? 5 : 3,
-              opacity: r.recommended ? 0.95 : 0.55,
+              opacity: r.recommended ? 0.95 : 0.75,
               dashArray: r.recommended ? null : '7 7'
-          }}).addTo(routeLayer);
+          }}).addTo(group);
           line.bindTooltip((r.recommended ? '✓ ' : '') + r.label, {{sticky:true, className:'route-tooltip'}});
 
           const markerPts = resample(lineCoords, r.coords.length);
           markerPts.forEach((c, i) => {{
               if (i === 0 || i === markerPts.length - 1) return;
               const risk = r.risk_points.find(rp => rp.idx === i);
-              const marker = L.circleMarker(c, {{
-                  radius: risk ? 7 : 4.5,
-                  color: risk ? '#ff3d63' : r.color,
-                  fillColor: risk ? '#ff3d63' : r.color,
-                  fillOpacity: 0.9,
-                  weight: 2
-              }}).addTo(routeLayer);
-              const riskHtml = risk ? `<br><b style="color:#ff6b7d;">⚠ ${{risk.tag}}</b>` : '';
-              marker.bindPopup(
-                  `<b>${{r.label}}</b><br>${{r.time_labels[i]}} 지점 · 예상 점수 ${{r.scores[i]}}${{riskHtml}}`
-              );
+              if (risk) {{
+                  const emoji = DATA.risk_icons[risk.tag] || '⚠';
+                  usedTagsByRoute[r.key][risk.tag] = emoji;
+                  const icon = L.divIcon({{
+                      className: '',
+                      html: `<div style="width:24px;height:24px;border-radius:50%;background:${{r.color}};` +
+                            `border:2px solid #fff;box-shadow:0 0 8px ${{r.color}};display:flex;` +
+                            `align-items:center;justify-content:center;font-size:12px;line-height:1;">${{emoji}}</div>`,
+                      iconSize: [24, 24], iconAnchor: [12, 12]
+                  }});
+                  const marker = L.marker(c, {{icon}}).addTo(group);
+                  marker.bindPopup(
+                      `<b>${{r.label}}</b><br>${{r.time_labels[i]}} 지점 · 예상 점수 ${{r.scores[i]}}` +
+                      `<br><b style="color:#ff6b7d;">${{emoji}} ${{risk.tag}}</b>`
+                  );
+              }} else {{
+                  const marker = L.circleMarker(c, {{
+                      radius: 4.5, color: r.color, fillColor: r.color, fillOpacity: 0.9, weight: 2
+                  }}).addTo(group);
+                  marker.bindPopup(`<b>${{r.label}}</b><br>${{r.time_labels[i]}} 지점 · 예상 점수 ${{r.scores[i]}}`);
+              }}
           }});
+
+          routeGroups[r.key] = group;
       }});
+
+      applyFilter();
       map.fitBounds(bounds, {{padding: [36, 36]}});
   }}
 
@@ -265,10 +494,13 @@ def render_route_cards(routes: list[dict], recommended_key: str) -> str:
     cards = []
     for r in routes:
         color = BAND_COLORS.get(r["band"][2], "#8892a8")
+        route_color = ROUTE_COLORS.get(r["key"], "#8892a8")
         is_recommended = r["key"] == recommended_key
         badge = '<div class="recommended-badge">✓ 추천 경로</div>' if is_recommended else ""
         if r["risk_factors"]:
-            tags = "".join(f'<span class="chip route-tag">{t}</span>' for t in r["risk_factors"])
+            tags = "".join(
+                f'<span class="chip route-tag">{RISK_TAG_ICONS.get(t, "⚠")} {t}</span>' for t in r["risk_factors"]
+            )
         else:
             tags = '<span class="route-tag-empty">특이 위험요인 없음</span>'
         spark = _sparkline_svg(r["scores"], r["eta_min"])
@@ -277,7 +509,10 @@ def render_route_cards(routes: list[dict], recommended_key: str) -> str:
             f"""
             <div class="route-card{' recommended' if is_recommended else ''}">
                 {badge}
-                <div class="route-card-label">{r['label']}</div>
+                <div class="route-card-label">
+                    <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:{route_color};margin-right:7px;vertical-align:middle;"></span>
+                    {r['label']}
+                </div>
                 <div class="route-card-meta">{r['distance_km']}km · 약 {r['eta_min']}분</div>
                 <div class="sparkline">{spark}</div>
                 <div class="route-card-score" style="color:{color};">

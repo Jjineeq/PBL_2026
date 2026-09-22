@@ -3,21 +3,15 @@ import streamlit.components.v1 as st_components
 
 from components.car_diagram import chip_label, render_car_diagram
 from components.fleet_ui import render_fleet_table, render_kpi_strip, render_situation_panel
-from components.health_ui import (
-    render_health_breakdown,
-    render_human_impact_panel,
-    render_module_drilldown,
-    render_prevention_preview,
-    render_report_view,
-    report_markdown,
-)
+from components.health_ui import render_health_breakdown, render_module_drilldown
 from components.mdutil import md
 from components.route_ui import render_leaflet_route_map, render_route_cards, render_route_delta
 from components.theme import inject_top_markers, load_css, load_scroll_reveal
-from logic.actions import ACTION_MODULE_THRESHOLD, PREVENTION_ACTIONS, simulate_prevention_effect
 from logic.fleet import generate_fleet
-from logic.health_score import MODULE_BANDS, MODULE_LABELS, MODULE_ORDER, band_for
+from logic.health_score import MODULE_LABELS, MODULE_ORDER
 from logic.routes import generate_candidate_routes
+
+GUIDE_PAGE = "pages/1_🛡_예방_조치_적용.py"
 
 st.set_page_config(
     page_title="AI Hospital · 관제 센터",
@@ -43,11 +37,11 @@ md(
     <div class="section section-tight" style="padding-top:110px;">
         <div class="reveal">
             <span class="mock-badge">PoC · 차량 데이터는 시뮬레이션, 점수 산식은 실제 계산 엔진입니다</span>
-            <div class="eyebrow">Control Room</div>
-            <div class="section-title">관제사 관점에서 위험 차량을 선별하고 예방 조치를 적용합니다</div>
+            <div class="eyebrow">Control Room · 1/2</div>
+            <div class="section-title">관제사 관점에서 위험 차량을 선별하고 경로를 비교합니다</div>
             <div class="section-sub">
                 AI가 전체 차량 상태를 먼저 진단하고(Detect), 위험 차량의 원인을 모듈별로 분석한 뒤(Diagnose),
-                경로 후보와 예방 조치를 관제사가 검토·선택합니다(Guide).
+                경로 후보를 관제사가 비교·선택합니다(Route). 예방 조치 선택과 적용은 다음 페이지에서 이어집니다.
             </div>
         </div>
     </div>
@@ -188,7 +182,7 @@ md(
 origin_label, dest_label = vehicle["route"].split(" → ", 1)
 routes, recommended_key = generate_candidate_routes(vehicle, weak_module, origin_label, dest_label)
 md('<div class="route-map-label">실시간 경로 지도 · 마커를 클릭하면 그 지점의 상황을 볼 수 있습니다</div>')
-st_components.html(render_leaflet_route_map(routes, recommended_key, origin_label, dest_label), height=430)
+st_components.html(render_leaflet_route_map(routes, recommended_key, origin_label, dest_label), height=640)
 md(render_route_cards(routes, recommended_key))
 
 route_label_map = {r["key"]: r["label"] for r in routes}
@@ -207,93 +201,33 @@ md(render_route_delta(chosen_route, routes[0]))
 st.markdown("</div>", unsafe_allow_html=True)
 md("</div>")
 
-# ---------------------------------------------------------------------------
-# 4. Guide — 예방 조치 선택
-# ---------------------------------------------------------------------------
-md('<div class="section section-tight">')
-md(
-    """
-    <div class="reveal">
-        <div class="eyebrow">Guide</div>
-        <div class="section-title" style="font-size:1.4rem;">예방 조치 선택</div>
-        <div class="section-sub" style="margin-bottom:8px;">정상 구간을 벗어난 모듈마다 적용할 예방 조치를 하나 이상 선택하세요. 여러 개를 함께 선택하면 효과가 합산됩니다.</div>
-    </div>
-    """
-)
-
-weak_modules = [m for m in MODULE_ORDER if result["modules"][m] < ACTION_MODULE_THRESHOLD]
-chosen_actions = {}
-st.markdown('<div class="demo-shell">', unsafe_allow_html=True)
-for m in weak_modules:
-    score = result["modules"][m]
-    band = band_for(score, MODULE_BANDS[m])
-    md(
-        f'<div class="ph-label" style="color:var(--accent-blue);font-size:0.78rem;font-weight:700;'
-        f'letter-spacing:0.06em;text-transform:uppercase;margin:22px 0 4px 0;">'
-        f"{MODULE_LABELS[m]} · {score}점 · {band[2]}</div>"
-        f'<p style="color:var(--text-lo);font-size:0.82rem;margin:0 0 10px 0;">시스템 기본 권고: {band[4]}</p>'
-    )
-    chosen_actions[m] = st.multiselect(
-        f"{MODULE_LABELS[m]} 예방 조치",
-        options=PREVENTION_ACTIONS[m],
-        default=[PREVENTION_ACTIONS[m][0]],
-        key=f"cc_action_{selected_id}_{m}",
-        label_visibility="collapsed",
-    )
-st.markdown("</div>", unsafe_allow_html=True)
-
-# Live before/after preview — recomputes on every radio change, no need to
-# press Apply first. The recovery amount is an illustrative estimate (the
-# spec has no numeric action->score formula); the Health Score math itself
-# is the real evaluate_scenario() pipeline.
-sim_result = simulate_prevention_effect(vehicle, chosen_actions)
-cur_final = int(round(result["health"]["health_final"]))
-sim_final = int(round(sim_result["health"]["health_final"]))
-md(render_prevention_preview(cur_final, sim_final, weak_modules, result["modules"], sim_result["modules"]))
-md("</div>")
+# Hand off to the next page — it rebuilds the same vehicle/route from these
+# two ids (both deterministic/seeded) instead of serializing full dicts
+# through session_state.
+st.session_state["cc_active_vehicle_id"] = selected_id
+st.session_state["cc_chosen_route_key"] = chosen_route_key
 
 # ---------------------------------------------------------------------------
-# 5. Apply — 예방 운행계획 적용
+# 다음 단계로 이동
 # ---------------------------------------------------------------------------
 md('<div class="section section-tight">')
 md(
-    """
-    <div class="reveal">
-        <div class="eyebrow">Apply</div>
-        <div class="section-title" style="font-size:1.4rem;">예방 운행계획 적용</div>
+    f"""
+    <div class="cta-panel reveal">
+        <span class="mock-badge">다음 단계</span>
+        <h2>선택한 경로에 어떤 예방 조치를 적용할까요?</h2>
+        <p>
+            {vehicle['label']} · {chosen_route['label']}
+            {'· 추천 경로' if chosen_route_key == recommended_key else ''}로 계속 진행합니다.
+            모듈별 예방 조치 선택과 최종 적용은 다음 페이지에서 이어집니다.
+        </p>
     </div>
     """
 )
-
-applied_key = f"cc_applied_{selected_id}"
-total_actions = sum(len(chosen_actions[m]) for m in weak_modules)
-st.markdown('<div class="demo-shell">', unsafe_allow_html=True)
-md(render_human_impact_panel(routes[0], chosen_route, cur_final, sim_final, total_actions))
-st.markdown('<div style="height:22px;"></div>', unsafe_allow_html=True)
-if st.button("✅ 예방 운행계획 적용", key=f"cc_apply_{selected_id}", type="primary"):
-    vehicle["actions"] = (
-        [f"우회 경로 적용: {chosen_route['label']} (예상 최저 점수 {chosen_route['min_score']}, {chosen_route['distance_km']}km · 약 {chosen_route['eta_min']}분)"]
-        + [
-            f"{MODULE_LABELS[m]} 모듈 예방 조치: {', '.join(chosen_actions[m]) if chosen_actions[m] else '없음'}"
-            for m in weak_modules
-        ]
-        + [f"예상 개선 효과(참고용 추정): Health Score {cur_final}점 → {sim_final}점"]
-    )
-    st.session_state[applied_key] = True
-st.markdown("</div>", unsafe_allow_html=True)
-
-if st.session_state.get(applied_key):
-    md(render_report_view(vehicle, result))
-    st.download_button(
-        "📄 예방 운행계획 Markdown 다운로드",
-        data=report_markdown(vehicle, result),
-        file_name=f"ai_hospital_prevention_plan_{selected_id}.md",
-        mime="text/markdown",
-        key=f"cc_download_{selected_id}",
-    )
-else:
-    st.caption("경로와 예방 조치를 선택한 뒤 '예방 운행계획 적용'을 눌러보세요.")
 md("</div>")
+_, mid, _ = st.columns([1, 1, 1])
+with mid:
+    st.page_link(GUIDE_PAGE, label="예방 조치 선택하기 →", use_container_width=True)
 
 md('<div class="footer-note">2026학년도 한국자동차연구원 퓨처모빌리티 아이디어 경진대회 · 최종발표</div>')
 

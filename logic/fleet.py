@@ -44,6 +44,9 @@ ROUTE_PLACES = [
     ("신공항대로", "화물터미널"),
     ("강변북로 지선", "복합환승센터"),
     ("테크노파크", "산학협력관"),
+    ("고려대", "미사강변도시"),
+    ("여의도", "잠실종합운동장"),
+    ("일산신도시", "김포공항"),
 ]
 
 # Approximate real-world (lat, lng) for every place name above, so the
@@ -77,6 +80,16 @@ PLACE_COORDS = {
     "복합환승센터": (37.5299, 126.9648),
     "테크노파크": (37.3900, 126.6500),
     "산학협력관": (37.3850, 126.6450),
+    # Longer, real-landmark pair — the origin/destination are far enough
+    # apart (and separated by the Han river) that OSRM's alternatives
+    # usually route over genuinely different bridges/corridors, so the 3
+    # candidates end up visibly distinct instead of near-duplicate curves.
+    "고려대": (37.5894, 127.0257),
+    "미사강변도시": (37.5602, 127.1928),
+    "여의도": (37.5219, 126.9245),
+    "잠실종합운동장": (37.5133, 127.1028),
+    "일산신도시": (37.6584, 126.7717),
+    "김포공항": (37.5583, 126.7906),
 }
 
 # (reason, penalty_lo, penalty_hi) — pulled from context tags in this pool

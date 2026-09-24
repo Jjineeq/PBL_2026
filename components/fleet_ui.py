@@ -1,10 +1,16 @@
 """Render helpers for the Control Room's Detect step (fleet-wide view).
 
-Same single-call HTML-string rule as the other components/*_ui.py modules.
+Same single-call HTML-string rule as the other components/*_ui.py modules,
+except fleet_dataframe() which returns a pandas DataFrame for st.dataframe()
+— that's what gives the Detect step real click-to-select rows (with
+built-in scroll/sort) instead of a static HTML table plus a separate
+dropdown to actually pick a vehicle.
 """
 
+import pandas as pd
+
 from components.icons import icon
-from logic.health_score import BAND_COLORS, BAND_EMOJI, HEALTH_BANDS, MODULE_LABELS
+from logic.health_score import AI_REQUEST_BY_BAND, BAND_EMOJI, HEALTH_BANDS, MODULE_LABELS
 
 
 def render_kpi_strip(fleet: list[dict]) -> str:
@@ -22,33 +28,30 @@ def render_kpi_strip(fleet: list[dict]) -> str:
     return f'<div class="impact-row reveal">{total_item}{band_items}</div>'
 
 
-def render_fleet_table(fleet: list[dict], limit: int | None = 15) -> str:
-    ordered = sorted(fleet, key=lambda v: v["_result"]["health"]["health_final"])
-    rows_data = ordered if limit is None else ordered[:limit]
+def fleet_dataframe(ordered: list[dict]) -> pd.DataFrame:
+    """One row per vehicle, already sorted (caller passes `ordered`, worst
+    Health Score first) — feeds st.dataframe(..., on_select="rerun",
+    selection_mode="single-row") so clicking a row IS the vehicle picker,
+    with native scroll/sort over the whole fleet instead of a capped static
+    table plus a separate dropdown.
 
-    rows = []
-    for v in rows_data:
-        health = v["_result"]["health"]
-        band = health["band"]
-        color = BAND_COLORS.get(band[2], "#8892a8")
-        score_display = int(round(health["health_final"]))
-        weak_label = MODULE_LABELS[v["_weak_module"]]
-        row_cls = "current" if band[2] != "정상" else ""
-        rows.append(
-            f'<tr class="{row_cls}"><td><span class="risk-dot" style="background:{color};"></span>'
-            f"{band[2]}</td><td>{v['id']}</td><td>{v['route']}</td>"
-            f"<td>{score_display}</td><td>{weak_label}</td></tr>"
-        )
-    body = "".join(rows)
-
-    return f"""
-    <div class="glass-card reveal" style="padding:26px;">
-        <table class="band-table">
-            <thead><tr><th>상태</th><th>차량</th><th>운행 구간</th><th>Health Score</th><th>최저 모듈</th></tr></thead>
-            <tbody>{body}</tbody>
-        </table>
-    </div>
-    """
+    Column order puts the highest-signal columns (state, id, score, what the
+    AI is asking for) first — on a narrow phone the table can't show all 6
+    columns without horizontal scroll, so the two longer/lower-priority text
+    columns (route, weakest module) are pushed to the end instead of sitting
+    between Health Score and AI 요청 and forcing an extra swipe to reach it."""
+    rows = [
+        {
+            "상태": f"{BAND_EMOJI.get(v['_result']['health']['band'][2], '⚪')} {v['_result']['health']['band'][2]}",
+            "차량": v["id"],
+            "Health Score": int(round(v["_result"]["health"]["health_final"])),
+            "AI 요청": AI_REQUEST_BY_BAND.get(v["_result"]["health"]["band"][2], ""),
+            "운행 구간": v["route"],
+            "최저 모듈": MODULE_LABELS[v["_weak_module"]],
+        }
+        for v in ordered
+    ]
+    return pd.DataFrame(rows)
 
 
 def render_situation_panel(vehicle: dict) -> str:

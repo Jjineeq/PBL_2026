@@ -1,11 +1,17 @@
 import streamlit as st
 
-from components.diagnosis_ui import render_health_result, render_module_note, render_root_cause_result
+from components.diagnosis_ui import (
+    render_health_result,
+    render_module_note,
+    render_prediction_accuracy,
+    render_root_cause_result,
+)
 from components.mdutil import md
 from components.theme import inject_top_markers, load_css, load_scroll_reveal
 from logic.diagnosis import (
     HEALTH_SCENARIOS,
     ROOT_CAUSE_SCENARIOS,
+    analyze_prediction_accuracy,
     run_health_check,
     run_root_cause,
 )
@@ -103,9 +109,13 @@ with tab2:
     if run_rc:
         st.session_state["rc_result"] = run_root_cause(rc_key)
         st.session_state["rc_result_label"] = ROOT_CAUSE_SCENARIOS[rc_key]
+        st.session_state["rc_result_key"] = rc_key
 
     if "rc_result" in st.session_state:
         md(render_root_cause_result(st.session_state["rc_result"], st.session_state["rc_result_label"]))
+        accuracy = analyze_prediction_accuracy(st.session_state["rc_result_key"])
+        if accuracy:
+            md(render_prediction_accuracy(accuracy))
     else:
         st.caption("사고 시나리오를 고른 뒤 '원인 진단 실행'을 눌러보세요.")
     st.markdown("</div>", unsafe_allow_html=True)

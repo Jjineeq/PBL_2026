@@ -583,14 +583,20 @@ hr.divider{
 }
 .chip .ic{ color:var(--accent-blue); flex-shrink:0; }
 
+/* NOT display:flex on purpose — flexbox turns each inline child (every
+   <b> in the sentence) into its own separate flex item instead of letting
+   them flow as part of one sentence, which fragments the text into narrow
+   stacked columns the moment the container gets tight (exactly what
+   happens on mobile). Plain block + centered inline content wraps as one
+   normal paragraph regardless of how many <b> tags are inside it. */
 .stat-line{
-  display:flex; align-items:center; gap:12px; justify-content:center;
+  text-align:center; line-height:1.7;
   padding:16px 24px; border-radius:16px;
   background:var(--glass-bg); border:1px solid var(--glass-border);
-  color:var(--text-mid); font-size:0.96rem; text-align:center;
+  color:var(--text-mid); font-size:0.96rem;
   margin-top:28px;
 }
-.stat-line .ic{ color:var(--accent-red); flex-shrink:0; }
+.stat-line .ic{ color:var(--accent-red); display:inline-flex; vertical-align:middle; margin-right:10px; }
 .stat-line b{ color:var(--text-hi); }
 
 /* Impact strip — icon+label row, lighter than full cards */
@@ -681,6 +687,19 @@ div[data-testid="stPageLink"] svg{ display:none; }
 .gauge-status.ok{ background:rgba(61,218,215,0.15); color:var(--accent-teal); }
 .gauge-status.warn{ background:rgba(255,177,64,0.15); color:#ffb140; }
 .gauge-status.bad{ background:rgba(255,61,99,0.15); color:var(--accent-red-2); }
+
+/* What the AI is asking the controller for — same "요청" language as the
+   Control Room fleet table's AI 요청 column, so both demo pages read as
+   one consistent system instead of two differently-worded mockups. */
+.ai-request-badge{
+  display:inline-flex; align-items:center; gap:6px;
+  padding:6px 14px; border-radius:999px;
+  font-family:var(--font-mono); font-size:0.82rem; font-weight:700;
+  margin-left:10px; margin-bottom:10px;
+}
+.ai-request-badge.ok{ background:rgba(61,218,215,0.12); color:var(--accent-teal); }
+.ai-request-badge.warn{ background:rgba(255,177,64,0.14); color:#ffb140; }
+.ai-request-badge.bad{ background:rgba(255,61,99,0.16); color:var(--accent-red-2); }
 
 .module-bars{ display:flex; flex-direction:column; gap:14px; margin-top:26px; }
 .module-bar-row{ display:grid; grid-template-columns:110px 1fr 54px; align-items:center; gap:14px; }
@@ -920,9 +939,10 @@ table.band-table tr.current td{
 /* ==========================================================================
    Control Room page — fleet table risk dot, candidate-route cards, sparklines
    ========================================================================== */
-.risk-dot{
-  display:inline-block; width:10px; height:10px; border-radius:50%;
-  margin-right:8px;
+div[data-testid="stDataFrame"]{
+  border-radius:var(--radius-md) !important;
+  border:1px solid var(--glass-border) !important;
+  overflow:hidden;
 }
 
 .route-map-label{

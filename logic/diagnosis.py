@@ -21,6 +21,16 @@ HEALTH_SCENARIOS = {
     "intersection": "무신호 교차로",
 }
 
+# What the AI is asking the controller to do, keyed by the same ok/warn/bad
+# status this page's fixtures already carry — same "요청" framing as the
+# Control Room's AI_REQUEST_BY_BAND (logic/health_score.py), just against
+# this page's own 3-tier status instead of the 5-band Health Score system.
+STATUS_AI_REQUEST = {
+    "ok": "요청 없음 · 자율 운행 중",
+    "warn": "🔔 확인 요청",
+    "bad": "⚠ 긴급 개입 요청",
+}
+
 _HEALTH_FIXTURES = {
     "normal": {
         "overall": 94,
@@ -132,6 +142,11 @@ ROOT_CAUSE_SCENARIOS = {
     "intersection_signal": "교차로 신호 오인식",
 }
 
+# All four root-cause scenarios ask the controller for the same kind of
+# thing — sign off on the proposed retraining/policy fix before it ships —
+# so this stays a single shared phrase rather than one per scenario.
+ROOT_CAUSE_AI_REQUEST = "🔔 재학습·정책 변경 승인 요청"
+
 _ROOT_CAUSE_FIXTURES = {
     "night_pedestrian": {
         "situation": "야간 저조도 주택가 도로에서 보행자가 차량 진행 경로로 갑자기 진입한 상황입니다.",
@@ -225,3 +240,82 @@ def run_root_cause(scenario_key: str) -> dict:
     entry is (stage, state, time_label).
     """
     return _ROOT_CAUSE_FIXTURES[scenario_key]
+
+
+# ---------------------------------------------------------------------------
+# 사전 건강검진 vs 실제 사고 — 예측 정확도 분석
+#
+# Each root-cause scenario has a same-situation health-check scenario (both
+# "night", both "rain", ...). This cross-checks: of the modules the health
+# check flagged as weak *beforehand*, how many actually turn out to be part
+# of the real accident's timeline? A module that was called fine but was
+# actually involved is a genuine blind spot in the health check — exactly
+# the kind of gap human review exists to catch.
+# ---------------------------------------------------------------------------
+
+ROOT_CAUSE_TO_HEALTH_SCENARIO = {
+    "night_pedestrian": "night",
+    "rain_braking": "rain",
+    "construction_avoid": "construction",
+    "intersection_signal": "intersection",
+}
+
+_STAGE_TO_MODULE_LABEL = {"Perception": "인지", "Prediction": "예측", "Planning": "계획", "Control": "제어"}
+
+_VERDICT_META = {
+    "hit": {"label": "적중", "tone": "ok", "icon": "check"},
+    "correct_clear": {"label": "정상 판단", "tone": "ok", "icon": "check"},
+    "blind_spot": {"label": "사각지대", "tone": "bad", "icon": "alert"},
+    "false_alarm": {"label": "과잉 경보", "tone": "warn", "icon": "alert"},
+}
+
+
+def analyze_prediction_accuracy(rc_key: str) -> dict | None:
+    """Ranks the matching health-check scenario's 4 modules by score — the
+    bottom two are what the health check flagged as weak beforehand — then
+    compares that flag against whether the real accident's timeline marks
+    that module as an "issue". Returns None if there's no matching
+    health-check scenario (shouldn't happen for the 4 current fixtures, but
+    keeps this safe if scenarios are added asymmetrically later).
+    """
+    health_key = ROOT_CAUSE_TO_HEALTH_SCENARIO.get(rc_key)
+    if not health_key:
+        return None
+
+    health = _HEALTH_FIXTURES[health_key]
+    timeline = _ROOT_CAUSE_FIXTURES[rc_key]["timeline"]
+    involved = {_STAGE_TO_MODULE_LABEL[stage] for stage, state, _ in timeline if state == "issue"}
+
+    ranked = sorted(health["modules"], key=lambda m: m[1])
+    flagged_weak = {name for name, _ in ranked[:2]}
+
+    rows = []
+    for name, score in health["modules"]:
+        was_flagged = name in flagged_weak
+        was_involved = name in involved
+        if was_flagged and was_involved:
+            verdict = "hit"
+        elif was_flagged and not was_involved:
+            verdict = "false_alarm"
+        elif not was_flagged and was_involved:
+            verdict = "blind_spot"
+        else:
+            verdict = "correct_clear"
+        rows.append(
+            {
+                "module": name,
+                "score": score,
+                "flagged_weak": was_flagged,
+                "involved": was_involved,
+                "verdict": verdict,
+                **_VERDICT_META[verdict],
+            }
+        )
+
+    return {
+        "health_scenario_label": HEALTH_SCENARIOS[health_key],
+        "rows": rows,
+        "hit_count": sum(1 for r in rows if r["verdict"] in ("hit", "correct_clear")),
+        "blind_spots": [r["module"] for r in rows if r["verdict"] == "blind_spot"],
+        "false_alarms": [r["module"] for r in rows if r["verdict"] == "false_alarm"],
+    }

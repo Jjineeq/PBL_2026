@@ -127,6 +127,18 @@ BAND_EMOJI = {
     "주의-경고": "🟡",
 }
 
+# What the AI is asking the controller to do, phrased as a request rather
+# than a status — derived directly from each HEALTH_BANDS row's 관제
+#우선순위/운영조치 (band[4]/band[5]), not a separate judgment call, so it
+# always stays consistent with the spec's own priority language.
+AI_REQUEST_BY_BAND = {
+    "정상": "요청 없음 · 자율 운행 중",
+    "주의-관찰": "모니터링 유지 요청",
+    "주의-경고": "🔔 경로 확인 요청",
+    "위험": "⚠ 긴급 개입 요청",
+    "심각": "⚠ 즉시 개입 요청",
+}
+
 
 def compute_module_score(module_key: str, component_values: dict) -> tuple[int, list[dict]]:
     """Weighted-sum score (0-100) for one module, plus the row-by-row

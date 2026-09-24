@@ -2,7 +2,7 @@ import streamlit as st
 import streamlit.components.v1 as st_components
 
 from components.car_diagram import chip_label, render_car_diagram
-from components.fleet_ui import render_fleet_table, render_kpi_strip, render_situation_panel
+from components.fleet_ui import fleet_dataframe, render_kpi_strip, render_situation_panel
 from components.health_ui import render_health_breakdown, render_module_drilldown
 from components.mdutil import md
 from components.route_ui import render_leaflet_route_map, render_route_cards, render_route_delta
@@ -69,26 +69,30 @@ md(
 md(render_kpi_strip(fleet))
 
 st.markdown('<div class="demo-shell" style="margin-top:22px;">', unsafe_allow_html=True)
-show_all = st.checkbox(f"전체 {len(fleet)}대 보기", value=False, key="cc_show_all")
-md(render_fleet_table(fleet, limit=None if show_all else 15))
-
-label_map = {
-    v["id"]: f"{v['id']} · {v['route']} · {int(round(v['_result']['health']['health_final']))}점"
-    for v in fleet
-}
 with st.container(border=True):
     st.markdown(
-        '<div class="picker-label"><span class="picker-arrow">▸</span> 드릴다운할 차량 선택'
-        '<span class="picker-hint">Health Score 낮은 순 · 여기서 고른 차량을 아래에서 진단합니다</span></div>',
+        '<div class="picker-label"><span class="picker-arrow">▸</span> 행을 클릭해 차량 선택'
+        '<span class="picker-hint">Health Score 낮은 순 · 상하좌우 스크롤로 전체 확인 · 고른 차량을 아래에서 진단합니다</span></div>',
         unsafe_allow_html=True,
     )
-    selected_id = st.selectbox(
-        "드릴다운할 차량 선택 (Health Score 낮은 순)",
-        options=[v["id"] for v in ordered],
-        format_func=lambda vid: label_map[vid],
-        key="cc_selected_vehicle",
-        label_visibility="collapsed",
+    select_event = st.dataframe(
+        fleet_dataframe(ordered),
+        hide_index=True,
+        use_container_width=True,
+        height=560,
+        column_config={
+            "상태": st.column_config.TextColumn("상태", width="small"),
+            "차량": st.column_config.TextColumn("차량", width="small"),
+            "Health Score": st.column_config.ProgressColumn(
+                "Health Score", min_value=0, max_value=100, format="%d점", width="small"
+            ),
+        },
+        on_select="rerun",
+        selection_mode="single-row",
+        key="cc_fleet_table",
     )
+selected_rows = select_event.selection.rows if select_event.selection else []
+selected_id = ordered[selected_rows[0]]["id"] if selected_rows else ordered[0]["id"]
 st.markdown("</div>", unsafe_allow_html=True)
 md("</div>")
 

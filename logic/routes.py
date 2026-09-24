@@ -16,8 +16,14 @@ so the same vehicle always gets the same 3 candidates across Streamlit
 reruns. Mirrors the PPT's route-comparison slides: Route A (최단 경로) runs
 straight through the vehicle's weak spot and trends down, Route B (대안
 경로 1) is a middling detour, Route C (대안 경로 2) is a longer detour that
-tends to stay stable/recover. Whichever ends up with the highest worst-point
-score is surfaced as the recommended route — it isn't hardcoded to C.
+tends to stay stable/recover.
+
+Roles (shortest / ai_optimal / compromise, see below) are assigned by
+distance rank, not by re-comparing scores — that keeps the "AI went the
+extra distance for safety" story geometrically consistent every time,
+instead of occasionally handing the ai_optimal badge to a route that isn't
+actually the longest one just because random severity noise scored it
+highest.
 """
 
 import copy
@@ -112,13 +118,27 @@ def _route_waypoints(origin: tuple, dest: tuple, bow_km: float, steps: int = _ST
     return points
 
 
+_ROLE_LABEL = {"shortest": "최단 경로", "ai_optimal": "AI 최적 경로", "compromise": "관제사 절충안"}
+
+
 def generate_candidate_routes(
     vehicle: dict,
     weak_module: str,
     origin_label: str | None = None,
     dest_label: str | None = None,
 ):
-    """Returns (routes, recommended_key)."""
+    """Returns (routes, recommended_key, tradeoff).
+
+    Each route also carries a `role`/`role_label` — "shortest" (least
+    distance), "ai_optimal" (highest min_score = what recommended_key
+    points at: the route the health-score formula itself prefers, even if
+    it's a long way round), and "compromise" (whichever candidate is left).
+    `tradeoff` quantifies what picking ai_optimal over shortest actually
+    costs/buys — extra distance/time vs. the score gain and which risk
+    tags disappear — so the controller has concrete numbers instead of a
+    bare recommendation to weigh against, and the UI can flag it when the
+    AI's score-maximizing pick is a disproportionate detour.
+    """
     rng = random.Random(f"route-{vehicle['id']}")
     tags_pool = _RISK_TAGS.get(weak_module, [])
 
@@ -165,5 +185,44 @@ def generate_candidate_routes(
             }
         )
 
-    recommended_key = max(routes, key=lambda r: r["min_score"])["key"]
-    return routes, recommended_key
+    # Roles are assigned by DISTANCE RANK, not by comparing min_score —
+    # severity is randomized per waypoint, so picking "whichever scored
+    # highest" could occasionally hand the ai_optimal badge to a SHORTER
+    # route than the one labeled "compromise", which reads as backwards
+    # (the AI supposedly went out of its way for safety, except it didn't
+    # go the furthest). Tying roles to distance guarantees the story is
+    # always geometrically consistent: longest = AI's furthest detour for
+    # safety, middle = the compromise, shortest = the baseline it's being
+    # compared against. The bow offsets already make farther routes
+    # reliably score better (recover trend vs. decline trend), so this
+    # rarely disagrees with the score ranking anyway.
+    by_distance = sorted(routes, key=lambda r: (r["distance_km"], r["key"]))
+    shortest_key = by_distance[0]["key"]
+    compromise_key = by_distance[1]["key"]
+    recommended_key = by_distance[2]["key"]
+
+    role_by_key = {shortest_key: "shortest", compromise_key: "compromise", recommended_key: "ai_optimal"}
+    for r in routes:
+        r["role"] = role_by_key.get(r["key"], "compromise")
+        r["role_label"] = _ROLE_LABEL[r["role"]]
+
+    route_by_key = {r["key"]: r for r in routes}
+    shortest_route, optimal_route = route_by_key[shortest_key], route_by_key[recommended_key]
+    extra_km = round(optimal_route["distance_km"] - shortest_route["distance_km"], 1)
+    extra_pct = round((optimal_route["distance_km"] / shortest_route["distance_km"] - 1) * 100) if shortest_route["distance_km"] else 0
+    avoided_risks = [t for t in shortest_route["risk_factors"] if t not in optimal_route["risk_factors"]]
+
+    tradeoff = {
+        "shortest_key": shortest_key,
+        "ai_optimal_key": recommended_key,
+        "compromise_key": compromise_key,
+        "has_tradeoff": shortest_key != recommended_key,
+        "extra_km": extra_km,
+        "extra_pct": extra_pct,
+        "extra_min": optimal_route["eta_min"] - shortest_route["eta_min"],
+        "score_gain": optimal_route["min_score"] - shortest_route["min_score"],
+        "avoided_risks": avoided_risks,
+        "is_extreme": extra_pct >= 20,
+    }
+
+    return routes, recommended_key, tradeoff

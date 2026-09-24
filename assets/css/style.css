@@ -387,6 +387,9 @@ body{ font-size:1rem; }
 }
 .flow-step{
   flex:1 1 160px;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
   background:var(--glass-bg);
   border:1px solid var(--glass-border);
   backdrop-filter:blur(14px);
@@ -700,6 +703,13 @@ div[data-testid="stPageLink"] svg{ display:none; }
 .ai-request-badge.ok{ background:rgba(61,218,215,0.12); color:var(--accent-teal); }
 .ai-request-badge.warn{ background:rgba(255,177,64,0.14); color:#ffb140; }
 .ai-request-badge.bad{ background:rgba(255,61,99,0.16); color:var(--accent-red-2); }
+/* Same badge, keyed by the 5-tier HEALTH_BANDS status classes (Health
+   Score page uses these instead of the 3-tier ok/warn/bad set above). */
+.ai-request-badge.normal{ background:rgba(61,218,215,0.12); color:var(--accent-teal); }
+.ai-request-badge.observe{ background:rgba(79,157,255,0.14); color:var(--accent-blue); }
+.ai-request-badge.caution{ background:rgba(255,177,64,0.14); color:#ffb140; }
+.ai-request-badge.danger{ background:rgba(255,107,74,0.16); color:var(--accent-red); }
+.ai-request-badge.critical{ background:rgba(255,61,99,0.16); color:var(--accent-red-2); }
 
 .module-bars{ display:flex; flex-direction:column; gap:14px; margin-top:26px; }
 .module-bar-row{ display:grid; grid-template-columns:110px 1fr 54px; align-items:center; gap:14px; }
@@ -962,7 +972,9 @@ div[data-testid="stDataFrame"]{
   backdrop-filter:blur(14px);
   -webkit-backdrop-filter:blur(14px);
   padding:22px 22px 20px 22px;
+  text-align:center;
 }
+.route-card .chip-row{ justify-content:center; }
 .route-card.recommended{
   border-color:rgba(61,218,215,0.55);
   box-shadow:0 0 0 1px rgba(61,218,215,0.25), 0 18px 40px -16px rgba(61,218,215,0.35);
@@ -974,6 +986,17 @@ div[data-testid="stDataFrame"]{
   color:var(--accent-teal); font-family:var(--font-mono); font-size:0.84rem; font-weight:700;
   margin-bottom:12px;
 }
+/* Role badges for the non-AI-optimal route cards — same pill shape as
+   .recommended-badge, neutral tones so they read as "also an option" not
+   "also recommended". */
+.role-badge{
+  display:inline-flex; align-items:center; gap:6px;
+  padding:5px 13px; border-radius:999px;
+  font-family:var(--font-mono); font-size:0.84rem; font-weight:700;
+  margin-bottom:12px;
+}
+.role-badge.role-shortest{ background:rgba(79,157,255,0.14); border:1px solid rgba(79,157,255,0.35); color:var(--accent-blue); }
+.role-badge.role-compromise{ background:rgba(167,139,250,0.16); border:1px solid rgba(167,139,250,0.4); color:#a78bfa; }
 .route-card-label{ font-size:1.16rem; font-weight:700; color:var(--text-hi); margin-bottom:4px; }
 .route-card-meta{ font-family:var(--font-mono); font-size:0.9rem; color:var(--text-lo); margin-bottom:12px; }
 .route-card .sparkline{ margin:4px 0 12px 0; }

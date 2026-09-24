@@ -123,6 +123,13 @@ _TIER_TARGET_RANGE = {
 # against "자율주행 Health Score 점수체계" 사례 1 / 사례 2 directly.
 _PINNED_CASES = {12: "case1", 55: "case2"}
 
+# V-055 (idx 55) is the fleet's lowest Health Score, so it's what the
+# Control Room shows by default — worth pinning to a place pair whose
+# real-road route renders cleanly (고려대 → 미사강변도시 crosses the Han
+# river over a real bridge, so OSRM's alternatives diverge nicely) instead
+# of whatever the idx % len(ROUTE_PLACES) modulo happens to land on.
+_PINNED_ROUTE_OVERRIDE = {55: ("고려대", "미사강변도시")}
+
 
 def _healthy_target(rng: random.Random) -> float:
     return rng.uniform(0.87, 0.98)
@@ -170,7 +177,7 @@ def _build_vehicle(rng: random.Random, idx: int) -> dict:
             else:
                 components[m] = _module_components(rng, m, _healthy_target(rng))
 
-    origin, dest = ROUTE_PLACES[idx % len(ROUTE_PLACES)]
+    origin, dest = _PINNED_ROUTE_OVERRIDE.get(idx, ROUTE_PLACES[idx % len(ROUTE_PLACES)])
     route_label = f"{origin} → {dest}"
     vehicle_id = f"V-{idx:03d}"
 

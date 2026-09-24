@@ -57,6 +57,7 @@ def render_leaflet_route_map(routes: list[dict], recommended_key: str, origin_la
             {
                 "key": r["key"],
                 "label": r["label"],
+                "role_label": r.get("role_label", ""),
                 "color": ROUTE_COLORS.get(r["key"], "#8892a8"),
                 "recommended": r["key"] == recommended_key,
                 "coords": r["coords"],
@@ -128,10 +129,27 @@ def render_leaflet_route_map(routes: list[dict], recommended_key: str, origin_la
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
   }}).addTo(map);
 
-  const originIcon = L.divIcon({{className:'', html:'<div style="width:14px;height:14px;border-radius:50%;background:#3ddad7;border:2px solid #fff;box-shadow:0 0 8px #3ddad7;"></div>', iconSize:[14,14], iconAnchor:[7,7]}});
-  const destIcon = L.divIcon({{className:'', html:'<div style="width:14px;height:14px;border-radius:50%;background:#ff6b4a;border:2px solid #fff;box-shadow:0 0 8px #ff6b4a;"></div>', iconSize:[14,14], iconAnchor:[7,7]}});
-  L.marker(DATA.origin.coords, {{icon: originIcon}}).addTo(map).bindPopup('출발 · ' + DATA.origin.label);
-  L.marker(DATA.dest.coords, {{icon: destIcon}}).addTo(map).bindPopup('도착 · ' + DATA.dest.label);
+  // Origin/destination need to read as origin/destination WITHOUT a click —
+  // a same-size same-shape dot distinguished only by color doesn't clear
+  // that bar. Each marker is a label chip stacked right above its dot, both
+  // baked into one divIcon so the label is always on, not just on hover.
+  function endpointIcon(emoji, text, color) {{
+      return L.divIcon({{
+          className: '',
+          html: `<div style="display:flex;flex-direction:column;align-items:center;">` +
+                `<div style="background:${{color}};color:#0a0e1a;font-size:11px;font-weight:800;` +
+                `padding:3px 10px;border-radius:7px;white-space:nowrap;margin-bottom:4px;` +
+                `box-shadow:0 3px 10px rgba(0,0,0,0.5);">${{emoji}} ${{text}}</div>` +
+                `<div style="width:20px;height:20px;border-radius:50%;background:${{color}};` +
+                `border:3px solid #fff;box-shadow:0 0 10px ${{color}};"></div></div>`,
+          iconSize: [140, 50],
+          iconAnchor: [70, 33],
+      }});
+  }}
+  const originIcon = endpointIcon('🚩', '출발 · ' + DATA.origin.label, '#3ddad7');
+  const destIcon = endpointIcon('🏁', '도착 · ' + DATA.dest.label, '#ff6b4a');
+  L.marker(DATA.origin.coords, {{icon: originIcon}}).addTo(map);
+  L.marker(DATA.dest.coords, {{icon: destIcon}}).addTo(map);
 
   // Resamples a polyline down to n evenly-spaced (by arc length) points —
   // used so time/risk markers land at consistent positions whether the line
@@ -236,7 +254,7 @@ def render_leaflet_route_map(routes: list[dict], recommended_key: str, origin_la
           const dim = activeFilter !== 'all' && activeFilter !== r.key;
           legendHtml += `<div style="display:flex;align-items:center;gap:6px;margin:2px 0;opacity:${{dim ? 0.35 : 1}};">` +
               `<span style="width:14px;height:4px;border-radius:2px;background:${{r.color}};display:inline-block;flex-shrink:0;"></span>` +
-              `<span>${{r.label}}${{r.recommended ? ' · 추천' : ''}}</span></div>`;
+              `<span>${{r.label}}${{r.role_label ? ' · ' + r.role_label : ''}}</span></div>`;
       }});
       const visibleKeys = activeFilter === 'all' ? DATA.routes.map(r => r.key) : [activeFilter];
       const visibleTags = new Map();
@@ -342,10 +360,9 @@ def render_leaflet_route_map(routes: list[dict], recommended_key: str, origin_la
           const line = L.polyline(lineCoords, {{
               color: r.color,
               weight: r.recommended ? 5 : 3,
-              opacity: r.recommended ? 0.95 : 0.75,
-              dashArray: r.recommended ? null : '7 7'
+              opacity: r.recommended ? 0.95 : 0.75
           }}).addTo(group);
-          line.bindTooltip((r.recommended ? '✓ ' : '') + r.label, {{sticky:true, className:'route-tooltip'}});
+          line.bindTooltip(r.label + (r.role_label ? ' · ' + r.role_label : ''), {{sticky:true, className:'route-tooltip'}});
 
           const markerPts = resample(lineCoords, r.coords.length);
           markerPts.forEach((c, i) => {{
@@ -490,13 +507,20 @@ def _sparkline_svg(scores: list[int], eta_min: int) -> str:
     return f'<svg viewBox="0 0 {_SPARK_W} {_SPARK_TOTAL_H}" width="100%" height="{_SPARK_TOTAL_H}">{svg_body}</svg>'
 
 
+_ROLE_BADGE_HTML = {
+    "ai_optimal": '<div class="recommended-badge">🎯 AI 최적 경로 · 점수 최대화</div>',
+    "shortest": '<div class="role-badge role-shortest">📍 최단 경로</div>',
+    "compromise": '<div class="role-badge role-compromise">⚖️ 관제사 절충안</div>',
+}
+
+
 def render_route_cards(routes: list[dict], recommended_key: str) -> str:
     cards = []
     for r in routes:
         color = BAND_COLORS.get(r["band"][2], "#8892a8")
         route_color = ROUTE_COLORS.get(r["key"], "#8892a8")
         is_recommended = r["key"] == recommended_key
-        badge = '<div class="recommended-badge">✓ 추천 경로</div>' if is_recommended else ""
+        badge = _ROLE_BADGE_HTML.get(r.get("role"), "")
         if r["risk_factors"]:
             tags = "".join(
                 f'<span class="chip route-tag">{RISK_TAG_ICONS.get(t, "⚠")} {t}</span>' for t in r["risk_factors"]
@@ -548,3 +572,46 @@ def render_route_delta(chosen: dict, baseline: dict) -> str:
         f'<b style="color:{color};">{chosen["min_score"]}점 ({chosen["band"][2]})</b> · {compare}'
         f"</div>"
     )
+
+
+def render_route_tradeoff(tradeoff: dict, routes: list[dict]) -> str:
+    """Makes the "AI optimizes for score, controller can push back" concept
+    concrete with actual numbers instead of just a badge: how much extra
+    distance/time the AI's score-maximizing pick costs over the shortest
+    route, what score gain that buys, and which named risk factors it
+    avoids. Returns "" when the AI's pick already IS the shortest route —
+    there's no detour to justify, so nothing to show."""
+    if not tradeoff["has_tradeoff"]:
+        return ""
+
+    route_by_key = {r["key"]: r for r in routes}
+    optimal = route_by_key[tradeoff["ai_optimal_key"]]
+    compromise = route_by_key[tradeoff["compromise_key"]]
+
+    avoided_html = (
+        "".join(f'<span class="chip route-tag">{RISK_TAG_ICONS.get(t, "⚠")} {t}</span>' for t in tradeoff["avoided_risks"])
+        if tradeoff["avoided_risks"]
+        else '<span class="route-tag-empty">회피한 위험 요인 없음</span>'
+    )
+
+    extreme_note = (
+        f'<p style="color:var(--accent-red-2);font-weight:700;font-size:0.92rem;margin-top:12px;">'
+        f'⚠ 최단 경로 대비 {tradeoff["extra_pct"]}% 더 우회하는 경로입니다 — '
+        f'절충안({compromise["label"]})도 함께 검토해보세요.</p>'
+        if tradeoff["is_extreme"]
+        else ""
+    )
+
+    return f"""
+    <div class="verdict-panel reveal" style="margin-top:18px;">
+        <div class="vlabel">AI 최적화 트레이드오프</div>
+        <p>
+            AI는 예측 Health Score를 최대화하는 경로({optimal['label']})를 우선 제안합니다.
+            최단 경로 대비 <b>{tradeoff['extra_km']}km(+{tradeoff['extra_pct']}%) · {tradeoff['extra_min']}분</b> 더 걸리지만,
+            최저 예측 점수는 <b style="color:var(--accent-teal);">+{tradeoff['score_gain']}점</b> 높습니다.
+        </p>
+        <div class="route-tags-label" style="margin-top:12px;">회피한 위험 요인</div>
+        <div class="chip-row route-tags">{avoided_html}</div>
+        {extreme_note}
+    </div>
+    """

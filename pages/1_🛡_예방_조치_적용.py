@@ -82,7 +82,7 @@ if vehicle is None:
 result = vehicle["_result"]
 weak_module = vehicle["_weak_module"]
 origin_label, dest_label = vehicle["route"].split(" → ", 1)
-routes, recommended_key = generate_candidate_routes(vehicle, weak_module, origin_label, dest_label)
+routes, _recommended_key, _tradeoff = generate_candidate_routes(vehicle, weak_module, origin_label, dest_label)
 chosen_route = next((r for r in routes if r["key"] == chosen_route_key), routes[0])
 
 md(
@@ -93,7 +93,7 @@ md(
             <div class="eyebrow">Control Room · 2/2</div>
             <div class="section-title">예방 조치를 선택하고 운행계획을 적용합니다</div>
             <div class="section-sub">
-                {vehicle['label']} · 선택된 경로 {chosen_route['label']}{' · 추천 경로' if chosen_route_key == recommended_key else ''}
+                {vehicle['label']} · 선택된 경로 {chosen_route['label']} · {chosen_route.get('role_label', '')}
                 에 적용할 예방 조치를 고릅니다.
             </div>
         </div>

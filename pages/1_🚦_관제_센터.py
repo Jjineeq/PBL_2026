@@ -5,7 +5,12 @@ from components.car_diagram import chip_label, render_car_diagram
 from components.fleet_ui import fleet_dataframe, render_kpi_strip, render_situation_panel
 from components.health_ui import render_health_breakdown, render_module_drilldown
 from components.mdutil import md
-from components.route_ui import render_leaflet_route_map, render_route_cards, render_route_delta
+from components.route_ui import (
+    render_leaflet_route_map,
+    render_route_cards,
+    render_route_delta,
+    render_route_tradeoff,
+)
 from components.theme import inject_top_markers, load_css, load_scroll_reveal
 from logic.fleet import generate_fleet
 from logic.health_score import MODULE_LABELS, MODULE_ORDER
@@ -174,28 +179,31 @@ md(
     f"""
     <div class="reveal">
         <div class="eyebrow">Route Comparison</div>
-        <div class="section-title" style="font-size:1.4rem;">후보 경로 비교 · 최적 우회 경로 추천</div>
+        <div class="section-title" style="font-size:1.4rem;">후보 경로 비교 · AI는 점수를, 관제사는 균형을 봅니다</div>
         <div class="section-sub" style="margin-bottom:8px;">
             별도의 경로 점수 산식이 아니라, 위에서 쓴 것과 같은 Health Score 계산식을
-            {MODULE_LABELS[weak_module]} 모듈 저하를 가정해 경로의 각 지점마다 다시 계산합니다 —
-            한 시점의 스냅샷이 아니라 경로 전체에 걸쳐 다각도로 봅니다.
+            {MODULE_LABELS[weak_module]} 모듈 저하를 가정해 경로의 각 지점마다 다시 계산합니다.
+            AI는 이 점수를 최대화하는 경로를 우선 제안하지만, 그 경로가 지나치게 돌아간다면
+            관제사가 절충 경로를 대신 선택할 수 있습니다.
         </div>
     </div>
     """
 )
 origin_label, dest_label = vehicle["route"].split(" → ", 1)
-routes, recommended_key = generate_candidate_routes(vehicle, weak_module, origin_label, dest_label)
+routes, recommended_key, tradeoff = generate_candidate_routes(vehicle, weak_module, origin_label, dest_label)
 md('<div class="route-map-label">실시간 경로 지도 · 마커를 클릭하면 그 지점의 상황을 볼 수 있습니다</div>')
 st_components.html(render_leaflet_route_map(routes, recommended_key, origin_label, dest_label), height=640)
 md(render_route_cards(routes, recommended_key))
+md(render_route_tradeoff(tradeoff, routes))
 
 route_label_map = {r["key"]: r["label"] for r in routes}
+role_label_map = {r["key"]: r["role_label"] for r in routes}
 route_options = [r["key"] for r in routes]
 st.markdown('<div class="demo-shell" style="padding-top:18px;">', unsafe_allow_html=True)
 chosen_route_key = st.radio(
     "적용할 경로 선택",
     options=route_options,
-    format_func=lambda k: route_label_map[k] + (" · 추천" if k == recommended_key else ""),
+    format_func=lambda k: f"{route_label_map[k]} · {role_label_map[k]}",
     index=route_options.index(recommended_key),
     horizontal=True,
     key=f"cc_route_{selected_id}",

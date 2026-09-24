@@ -7,6 +7,7 @@ break CSS grid & table layouts under Streamlit.
 """
 
 from logic.health_score import (
+    AI_REQUEST_BY_BAND,
     BAND_COLORS,
     BAND_STATUS_CLASS,
     HEALTH_BANDS,
@@ -79,6 +80,7 @@ def render_health_breakdown(scenario: dict, result: dict) -> str:
     return f"""
     <div class="glass-card reveal" style="padding:34px;">
         <div class="gauge-status {_status_class(band[2])}">{scenario['label']} · Health Score {band[2]}</div>
+        <div class="ai-request-badge {_status_class(band[2])}">{AI_REQUEST_BY_BAND.get(band[2], '')}</div>
         <div class="gauge-wrap">
             <div class="gauge" style="--pct:{health['health_final']};--gauge-color:{BAND_COLORS[band[2]]};">
                 <div class="gauge-inner"><div class="score">{final_display}</div><div class="of100">/ 100</div></div>

@@ -125,10 +125,10 @@ for m in weak_modules:
     score = result["modules"][m]
     band = band_for(score, MODULE_BANDS[m])
     md(
-        f'<div class="ph-label" style="color:var(--accent-blue);font-size:0.78rem;font-weight:700;'
+        f'<div class="ph-label" style="color:var(--accent-blue);font-size:1.09rem;font-weight:700;'
         f'letter-spacing:0.06em;text-transform:uppercase;margin:22px 0 4px 0;">'
         f"{MODULE_LABELS[m]} · {score}점 · {band[2]}</div>"
-        f'<p style="color:var(--text-lo);font-size:0.82rem;margin:0 0 10px 0;">시스템 기본 권고: {band[4]}</p>'
+        f'<p style="color:var(--text-lo);font-size:1.15rem;margin:0 0 10px 0;">시스템 기본 권고: {band[4]}</p>'
     )
     chosen_actions[m] = st.multiselect(
         f"{MODULE_LABELS[m]} 예방 조치",

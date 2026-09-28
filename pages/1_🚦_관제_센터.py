@@ -179,12 +179,12 @@ md(
     f"""
     <div class="reveal">
         <div class="eyebrow">Route Comparison</div>
-        <div class="section-title" style="font-size:1.4rem;">후보 경로 비교 · AI는 점수를, 관제사는 균형을 봅니다</div>
+        <div class="section-title" style="font-size:1.4rem;">후보 경로 비교 · AI가 제안한 경로 중 관제사가 선택합니다</div>
         <div class="section-sub" style="margin-bottom:8px;">
             별도의 경로 점수 산식이 아니라, 위에서 쓴 것과 같은 Health Score 계산식을
             {MODULE_LABELS[weak_module]} 모듈 저하를 가정해 경로의 각 지점마다 다시 계산합니다.
-            AI는 이 점수를 최대화하는 경로를 우선 제안하지만, 그 경로가 지나치게 돌아간다면
-            관제사가 절충 경로를 대신 선택할 수 있습니다.
+            AI는 점수가 가장 높은 경로를 <b>AI 추천 경로 1</b>로, 거리와 점수의 균형을 맞춘 경로를
+            <b>AI 추천 경로 2</b>로 함께 제안하며, 관제사는 상황에 맞는 경로를 선택합니다.
         </div>
     </div>
     """

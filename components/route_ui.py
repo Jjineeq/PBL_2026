@@ -508,9 +508,9 @@ def _sparkline_svg(scores: list[int], eta_min: int) -> str:
 
 
 _ROLE_BADGE_HTML = {
-    "ai_optimal": '<div class="recommended-badge">🎯 AI 최적 경로 · 점수 최대화</div>',
+    "ai_optimal": '<div class="recommended-badge">🎯 AI 추천 경로 1 · 점수 최우선</div>',
     "shortest": '<div class="role-badge role-shortest">📍 최단 경로</div>',
-    "compromise": '<div class="role-badge role-compromise">⚖️ 관제사 절충안</div>',
+    "compromise": '<div class="role-badge role-compromise">🤖 AI 추천 경로 2 · 균형</div>',
 }
 
 
@@ -597,18 +597,19 @@ def render_route_tradeoff(tradeoff: dict, routes: list[dict]) -> str:
     extreme_note = (
         f'<p style="color:var(--accent-red-2);font-weight:700;font-size:0.92rem;margin-top:12px;">'
         f'⚠ 최단 경로 대비 {tradeoff["extra_pct"]}% 더 우회하는 경로입니다 — '
-        f'절충안({compromise["label"]})도 함께 검토해보세요.</p>'
+        f'AI 추천 경로 2({compromise["label"]})도 함께 검토해보세요.</p>'
         if tradeoff["is_extreme"]
         else ""
     )
 
     return f"""
     <div class="verdict-panel reveal" style="margin-top:18px;">
-        <div class="vlabel">AI 최적화 트레이드오프</div>
+        <div class="vlabel">AI 추천 경로 트레이드오프</div>
         <p>
-            AI는 예측 Health Score를 최대화하는 경로({optimal['label']})를 우선 제안합니다.
+            AI는 예측 Health Score를 최대화하는 경로를 <b>AI 추천 경로 1</b>({optimal['label']})으로 제안합니다.
             최단 경로 대비 <b>{tradeoff['extra_km']}km(+{tradeoff['extra_pct']}%) · {tradeoff['extra_min']}분</b> 더 걸리지만,
             최저 예측 점수는 <b style="color:var(--accent-teal);">+{tradeoff['score_gain']}점</b> 높습니다.
+            관제사는 이 중 상황에 맞는 경로를 선택합니다.
         </p>
         <div class="route-tags-label" style="margin-top:12px;">회피한 위험 요인</div>
         <div class="chip-row route-tags">{avoided_html}</div>

@@ -770,6 +770,9 @@ div[data-testid="stPageLink"] svg{ display:none; }
 .verdict-panel h4{ font-size:1.26rem; color:var(--text-hi); margin:0 0 10px 0; }
 .verdict-panel p{ font-size:0.98rem; color:var(--text-mid); margin:0; line-height:1.7; }
 
+.prevention-preview .vlabel{ font-size:1.12rem; }
+.prevention-preview p{ font-size:1.37rem; }
+
 /* Counterfactual "human impact" comparison — AI alone vs. controller intervened */
 .cf-compare{ display:flex; align-items:stretch; gap:14px; margin-top:18px; flex-wrap:wrap; }
 .cf-box{ flex:1 1 220px; border-radius:var(--radius-md); padding:18px 20px; border:1px solid var(--glass-border); }
@@ -793,12 +796,12 @@ div[data-testid="stPageLink"] svg{ display:none; }
 
 /* Live before/after bars — Guide step's prevention-action preview */
 .preview-bars{ display:flex; flex-direction:column; gap:16px; margin-top:18px; }
-.preview-bar-row{ display:grid; grid-template-columns:120px 1fr 190px; align-items:center; gap:14px; }
-.preview-bar-row .p-label{ font-size:0.92rem; color:var(--text-mid); font-weight:600; }
-.preview-bar-track{ position:relative; height:14px; border-radius:999px; background:rgba(255,255,255,0.08); }
+.preview-bar-row{ display:grid; grid-template-columns:150px 1fr 230px; align-items:center; gap:14px; }
+.preview-bar-row .p-label{ font-size:1.29rem; color:var(--text-mid); font-weight:600; }
+.preview-bar-track{ position:relative; height:16px; border-radius:999px; background:rgba(255,255,255,0.08); }
 .preview-bar-after{ position:absolute; top:0; left:0; height:100%; border-radius:999px; transition:width 0.4s ease; opacity:0.9; }
-.preview-bar-marker{ position:absolute; top:-3px; width:2px; height:20px; background:#fff; opacity:0.85; transition:left 0.4s ease; }
-.preview-bar-row .p-val{ font-family:var(--font-mono); font-size:0.9rem; color:var(--text-lo); text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.preview-bar-marker{ position:absolute; top:-3px; width:2px; height:22px; background:#fff; opacity:0.85; transition:left 0.4s ease; }
+.preview-bar-row .p-val{ font-family:var(--font-mono); font-size:1.26rem; color:var(--text-lo); text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .preview-bar-row .p-val .arrow{ color:var(--text-lo); margin:0 3px; }
 @media (max-width: 640px){
   .preview-bar-row{ grid-template-columns:90px 1fr; }
@@ -869,6 +872,10 @@ div[data-testid="stCaptionContainer"]{ font-size:0.92rem !important; }
 }
 
 button[data-baseweb="tab"]{ font-weight:700 !important; font-size:1rem !important; }
+
+div[data-testid="stMultiSelect"] [data-baseweb="tag"]{ font-size:1.12rem !important; }
+div[data-testid="stMultiSelect"] [data-baseweb="tag"] *{ font-size:1.12rem !important; }
+div[data-testid="stMultiSelect"] [data-baseweb="select"] input{ font-size:1.12rem !important; }
 
 /* ==========================================================================
    Health Score page — 5-tier status pill, score/band tables, formula

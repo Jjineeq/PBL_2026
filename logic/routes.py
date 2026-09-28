@@ -24,6 +24,13 @@ extra distance for safety" story geometrically consistent every time,
 instead of occasionally handing the ai_optimal badge to a route that isn't
 actually the longest one just because random severity noise scored it
 highest.
+
+Framing: all non-baseline routes are AI-generated candidates ("AI 추천
+경로 1" = the score-maximizing pick, "AI 추천 경로 2" = the more balanced
+detour) — the controller reviews both and picks one, rather than the
+controller inventing an alternative route themselves. The "compromise"
+role name is kept internally (it still describes what that route IS —
+a middle-ground pick) even though its display label changed.
 """
 
 import copy
@@ -118,7 +125,7 @@ def _route_waypoints(origin: tuple, dest: tuple, bow_km: float, steps: int = _ST
     return points
 
 
-_ROLE_LABEL = {"shortest": "최단 경로", "ai_optimal": "AI 최적 경로", "compromise": "관제사 절충안"}
+_ROLE_LABEL = {"shortest": "최단 경로", "ai_optimal": "AI 추천 경로 1", "compromise": "AI 추천 경로 2"}
 
 
 def generate_candidate_routes(

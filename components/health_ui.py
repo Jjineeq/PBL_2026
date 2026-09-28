@@ -152,7 +152,7 @@ def render_prevention_preview(
     )
 
     return f"""
-    <div class="verdict-panel reveal" style="margin-top:22px;">
+    <div class="verdict-panel prevention-preview reveal" style="margin-top:22px;">
         <div class="vlabel">Live Preview · 조치 적용 시뮬레이션</div>
         <p>선택한 예방 조치를 적용하면 Health Score가
             <b>{cur_final}점 → {sim_final}점</b>
